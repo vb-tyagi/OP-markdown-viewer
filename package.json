@@ -1,0 +1,15 @@
+{
+  "name": "essay-editor",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Edit markdown files on your own computer, in your browser, with a formatting guard on every save. Static, local-first, no backend.",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/vb-tyagi/essay-editor.git" },
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test-guard.mjs",
+    "verify-vendor": "node scripts/verify-vendor.mjs"
+  }
+}

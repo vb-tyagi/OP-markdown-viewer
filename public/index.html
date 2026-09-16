@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.anthropic.com; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'self'">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="Edit markdown files on your own computer, in your browser. Every save goes through a formatting guard. Nothing is uploaded.">
+<title>essay editor</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<header>
+  <span class="brand" id="brand">essay editor</span>
+  <span class="chip" id="folderChip" hidden><span id="folderName"></span><button id="changeFolder" class="link">change</button></span>
+  <span class="grow"></span>
+  <label class="chk" id="aiOnSaveLabel" hidden><input type="checkbox" id="aiOnSave"> AI review before save</label>
+  <button id="togglePreview" hidden>preview</button>
+  <button id="openSettings">settings</button>
+  <span class="status" id="status">loading…</span>
+</header>
+<div id="banner" class="banner" hidden></div>
+<main id="main" class="no-folder">
+  <aside id="sidebar" hidden>
+    <div class="head"><span id="count"></span><span id="doneCount"></span></div>
+    <ol id="list"></ol>
+  </aside>
+  <section id="editor">
+    <div id="welcome" class="welcome">
+      <h1 id="welcomeTitle">essay editor</h1>
+      <p class="lede">edit markdown files on your own computer, in your browser. every save writes straight to the file, through a formatting guard that catches accidental damage. nothing is uploaded.</p>
+      <div class="actions">
+        <button id="openFolder" class="primary big">open a folder</button>
+        <button id="reopenFolder" class="big" hidden>reopen</button>
+        <label id="pickFilesLabel" class="btn big" for="filePicker" hidden>choose files</label>
+        <button id="tryDemo" class="big">try the demo</button>
+      </div>
+      <p class="small" id="unsupportedNote" hidden>this browser cannot write files directly. you can still open files, edit them, and download the edited copies. for saving in place use Chrome, Edge, Brave, or Arc.</p>
+      <ul class="facts">
+        <li>saves are atomic, verified byte for byte, and preceded by a backup copy inside your folder (<code id="backupDirName"></code>).</li>
+        <li>a deterministic formatting guard runs on every save. an optional AI reviewer can double-check, using your own Anthropic API key or a local claude CLI.</li>
+        <li>no accounts, no analytics, no cookies. the only network request the page can make is to api.anthropic.com, and only if you turn the AI reviewer on. <a id="repoLink" href="#" rel="noopener noreferrer">source on GitHub</a>.</li>
+      </ul>
+    </div>
+    <div class="toolbar" id="toolbar" hidden>
+      <button id="prev" title="⌘[">‹ prev</button>
+      <button id="next" title="⌘]">next ›</button>
+      <span class="meta" id="meta"></span>
+      <span class="grow"></span>
+      <button id="resetDemo" hidden>reset demo</button>
+      <button id="markDone">mark done</button>
+      <button id="check" title="run the formatting guard">check</button>
+      <button id="review" title="ask the AI reviewer">AI review</button>
+      <button id="revert">revert</button>
+      <button id="save" class="primary">save<kbd>⌘S</kbd></button>
+    </div>
+    <textarea id="ta" spellcheck="true" hidden></textarea>
+    <div id="panel"></div>
+  </section>
+  <section id="preview" hidden><div id="fm" class="fm" hidden></div><article id="article"></article></section>
+</main>
+
+<dialog id="settings">
+  <form id="settingsForm" method="dialog">
+    <h2>settings</h2>
+    <fieldset>
+      <legend>AI reviewer</legend>
+      <label>provider
+        <select id="sProvider">
+          <option value="auto">automatic</option>
+          <option value="anthropic">Anthropic API with my key</option>
+          <option value="cli" id="sProviderCli" hidden>local claude CLI (companion)</option>
+          <option value="off">off</option>
+        </select>
+      </label>
+      <p class="small" id="sCliNote" hidden></p>
+      <label>Anthropic API key <input id="sKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…"></label>
+      <label class="chk"><input type="checkbox" id="sRemember"><span>remember the key on this device, in this site's local storage (otherwise it is forgotten when the tab closes)</span></label>
+      <div class="actions"><button type="button" id="sForget" class="small">forget key</button></div>
+      <label>model <select id="sModel"></select></label>
+      <p class="small">the essay text is sent to api.anthropic.com with your key, and nowhere else. a review costs a few cents.</p>
+      <label>style notes for the reviewer <textarea id="sNotes" rows="3" placeholder="e.g. all-lowercase prose, curly “ ” quotes, straight apostrophes"></textarea></label>
+      <label class="chk"><input type="checkbox" id="sReviewOnSave"><span>run the AI reviewer before every save</span></label>
+    </fieldset>
+    <fieldset>
+      <legend>saving</legend>
+      <label class="chk"><input type="checkbox" id="sBackups"><span>keep a backup copy before each save, in <code id="sBackupDir"></code> inside the folder</span></label>
+    </fieldset>
+    <div class="actions">
+      <button type="button" id="sCancel">cancel</button>
+      <button type="submit" class="primary">save settings</button>
+    </div>
+    <p class="small" id="sVersion"></p>
+  </form>
+</dialog>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="filePicker" webkitdirectory multiple hidden>
+<script src="./vendor/marked.umd.js" integrity="sha384-Jy8qDMspJASzATgFngF2ompIKy0StbCcvuTE65mxDm/E0/YSIF6Ndc+5V7bbwRcw"></script>
+<script src="./vendor/purify.min.js" integrity="sha384-uUMu9JDY09vBzRf9SPcK2VgUj+W/70J6Soc+Dded5P474ElQ63iv9j5N3DE7Kp3N"></script>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
