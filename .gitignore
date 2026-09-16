@@ -5,4 +5,4 @@ node_modules/
 .env.*
 .vercel/
 .claude/
-.essay-editor-backups/
+.op-markdown-viewer-backups/

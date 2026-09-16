@@ -1,8 +1,7 @@
-# Deploys the static site in public/ to GitHub Pages. Actions are pinned to commit SHAs.
+# Optional: deploys the static site in public/ to GitHub Pages. Manual trigger only, because the
+# live link uses Vercel. Enable Pages with source "GitHub Actions" first. Actions are pinned to SHAs.
 name: pages
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 permissions: {}
 concurrency:

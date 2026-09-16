@@ -1,4 +1,4 @@
-# essay editor
+# OP-markdown-viewer
 
 Edit markdown files on your own computer, in your browser. Every save writes straight to the file on disk, through a formatting guard that catches accidental damage. Nothing is uploaded.
 
@@ -22,7 +22,7 @@ The in-place path uses the [File System Access API](https://developer.mozilla.or
 ## How saves are protected
 
 1. The exact text in the editor is written. Nothing is reformatted. A file's BOM is preserved, and so are its line endings when they are consistently LF or CRLF. A file with mixed line endings is shown with a banner and saved with LF throughout. Files that are not valid UTF-8 open read-only.
-2. Before every real save, the previous version is copied to `.essay-editor-backups/<file>/<timestamp>.md` inside the folder (the newest 30 per file are kept; can be turned off in settings). If the folder is a git repository, add that backup folder to its `.gitignore`.
+2. Before every real save, the previous version is copied to `.op-markdown-viewer-backups/<file>/<timestamp>.md` inside the folder (the newest 30 per file are kept; can be turned off in settings). If the folder is a git repository, add that backup folder to its `.gitignore`.
 3. The write goes through the browser's atomic swap-file mechanism and is read back and compared byte for byte.
 4. If the file changed on disk since you opened it, the save stops and asks whether to overwrite.
 
@@ -56,8 +56,8 @@ You can add style notes (for example "all-lowercase prose, curly quotes, straigh
 ## Run it locally
 
 ```bash
-git clone <REPO-URL>
-cd essay-editor
+git clone https://github.com/vb-tyagi/OP-markdown-viewer.git
+cd OP-markdown-viewer
 npm start
 ```
 
@@ -67,8 +67,10 @@ Then open http://127.0.0.1:4545. No dependencies to install. Node 18 or newer.
 
 It is a static site. The `public/` folder is the whole thing.
 
-- **Vercel:** import the repository; `vercel.json` sets the output directory and the security headers.
-- **GitHub Pages:** enable Pages with source "GitHub Actions"; `.github/workflows/pages.yml` runs the tests and deploys `public/` on every push to `main`.
+- **Vercel** (what the live link uses): import the repository; `vercel.json` sets the output directory and the security headers. Every push to `main` deploys.
+- **GitHub Pages:** enable Pages with source "GitHub Actions", then run the `pages` workflow from the Actions tab (`.github/workflows/pages.yml`, manual trigger). Pages cannot send HTTP headers, so only the in-page security policy applies there.
+
+`.github/workflows/ci.yml` runs the tests and the vendor hash check on every push and pull request.
 
 ## Privacy and security
 
