@@ -17,7 +17,7 @@
     "test": "node test-guard.mjs",
     "verify-vendor": "node scripts/verify-vendor.mjs"
   },
-  "homepage": "https://github.com/vb-tyagi/OP-markdown-viewer#readme",
+  "homepage": "https://op-markdown-viewer.vercel.app",
   "bugs": {
     "url": "https://github.com/vb-tyagi/OP-markdown-viewer/issues"
   }

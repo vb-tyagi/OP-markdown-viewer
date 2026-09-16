@@ -2,7 +2,7 @@
 
 Edit markdown files on your own computer, in your browser. Every save writes straight to the file on disk, through a formatting guard that catches accidental damage. Nothing is uploaded.
 
-**Live:** `<LIVE-URL>` · **Try it:** open the live page and click "try the demo".
+**Live:** https://op-markdown-viewer.vercel.app · **Try it:** open the live page and click "try the demo".
 
 ## What it does
 

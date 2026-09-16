@@ -6,3 +6,4 @@ node_modules/
 .vercel/
 .claude/
 .op-markdown-viewer-backups/
+.vercel

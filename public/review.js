@@ -67,6 +67,8 @@ export async function reviewWithAnthropic({ apiKey, model, name, original, edite
 }
 
 export async function probeCli() {
+  const h = location.hostname;
+  if (h !== 'localhost' && h !== '127.0.0.1') return null; // the companion only ever runs locally
   try {
     const r = await fetch('./api/cli-status', { cache: 'no-store', credentials: 'omit' });
     if (!r.ok) return null;
