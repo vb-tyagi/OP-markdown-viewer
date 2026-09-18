@@ -81,7 +81,7 @@ ok(decodeBytes(new Uint8Array([0xff, 0xfe, 0x41])).valid === false, 'invalid UTF
 const mixed = decodeBytes(enc.encode('a\r\nb\nc\rd'));
 ok(mixed.mixed === true && mixed.eol === 'lf' && mixed.text === 'a\nb\nc\nd', 'mixed and lone-CR endings are flagged and normalized');
 ok(decodeBytes(enc.encode('a\nb\n')).mixed === false && decodeBytes(enc.encode('a\nb\n')).eol === 'lf', 'plain LF is neither crlf nor mixed');
-ok(isMarkdownName('essay.md') && !isMarkdownName('.hidden.md') && !isMarkdownName('a/b.md') && !isMarkdownName('notes.txt'), 'markdown name rules');
+ok(isMarkdownName('essay.md') && isMarkdownName('essay.markdown') && !isMarkdownName('.hidden.md') && !isMarkdownName('a/b.md') && !isMarkdownName('notes.txt') && !isMarkdownName('x.mdx'), 'markdown name rules');
 
 console.log(fails ? `\n${fails} FAILED` : '\nall tests passed');
 process.exit(fails ? 1 : 0);

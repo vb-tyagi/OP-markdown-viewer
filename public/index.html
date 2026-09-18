@@ -30,18 +30,30 @@
   <section id="editor">
     <div id="welcome" class="welcome">
       <h1 id="welcomeTitle">OP-markdown-viewer</h1>
-      <p class="lede">edit markdown files on your own computer, in your browser. every save writes straight to the file, through a formatting guard that catches accidental damage. nothing is uploaded.</p>
+      <p class="lede">edit markdown files in your browser. open files, make your changes, and save copies wherever you like. nothing is uploaded, and nothing asks for permission.</p>
       <div class="actions">
-        <button id="openFolder" class="primary big">open a folder</button>
-        <button id="reopenFolder" class="big" hidden>reopen</button>
-        <label id="pickFilesLabel" class="btn big" for="filePicker" hidden>choose files</label>
+        <label id="openFiles" class="btn primary big" for="filePicker">open files</label>
         <button id="tryDemo" class="big">try the demo</button>
       </div>
-      <p class="small" id="unsupportedNote" hidden>this browser cannot write files directly. you can still open files, edit them, and download the edited copies. for saving in place use Chrome, Edge, Brave, or Arc.</p>
+      <p class="small">or drop .md files anywhere on this screen. <span id="saveCopyHow"></span> a formatting guard checks every save for accidental damage, entirely inside your browser.</p>
+      <div class="optional">
+        <h2>optional, only if you want them</h2>
+        <div class="opt-row">
+          <button id="openFolder" class="big" hidden>open a folder for direct saving</button>
+          <button id="reopenFolder" class="big" hidden>reopen</button>
+          <button class="info-btn" data-info="folder" type="button" aria-label="about direct folder saving" title="what is this?">i</button>
+          <span class="small">saves go straight back into the original files, with a backup copy first. the browser asks once for access to that one folder.</span>
+        </div>
+        <p class="small" id="unsupportedNote" hidden>direct folder saving needs Chrome, Edge, Brave, Arc, or Opera. everything else works here.</p>
+        <div class="opt-row">
+          <button id="enableAi" class="big">turn on the AI reviewer</button>
+          <button class="info-btn" data-info="ai" type="button" aria-label="about the AI reviewer" title="what is this?">i</button>
+          <span class="small">a second opinion on formatting only, using your own Anthropic API key or a local claude CLI. off until you switch it on.</span>
+        </div>
+      </div>
       <ul class="facts">
-        <li>saves are atomic, verified byte for byte, and preceded by a backup copy inside your folder (<code id="backupDirName"></code>).</li>
-        <li>a deterministic formatting guard runs on every save. an optional AI reviewer can double-check, using your own Anthropic API key or a local claude CLI.</li>
-        <li>no accounts, no analytics, no cookies. the only network request the page can make is to api.anthropic.com, and only if you turn the AI reviewer on. <a id="repoLink" href="#" rel="noopener noreferrer">source on GitHub</a>.</li>
+        <li>files mode never modifies your originals. direct mode saves are atomic, verified byte for byte, and preceded by a backup inside your folder (<code id="backupDirName"></code>).</li>
+        <li>no accounts, no analytics, no cookies. the only network request the page can ever make is to api.anthropic.com, and only if you turn the AI reviewer on. <a id="repoLink" href="#" rel="noopener noreferrer">source on GitHub</a>.</li>
       </ul>
     </div>
     <div class="toolbar" id="toolbar" hidden>
@@ -54,7 +66,7 @@
       <button id="check" title="run the formatting guard">check</button>
       <button id="review" title="ask the AI reviewer">AI review</button>
       <button id="revert">revert</button>
-      <button id="save" class="primary">save<kbd>⌘S</kbd></button>
+      <button id="save" class="primary"><span id="saveLabel">save</span><kbd>⌘S</kbd></button>
     </div>
     <textarea id="ta" spellcheck="true" hidden></textarea>
     <div id="panel"></div>
@@ -66,7 +78,9 @@
   <form id="settingsForm" method="dialog">
     <h2>settings</h2>
     <fieldset>
-      <legend>AI reviewer</legend>
+      <legend>AI reviewer <button class="info-btn" data-info="ai" type="button" aria-label="about the AI reviewer" title="what is this?">i</button></legend>
+      <label class="chk"><input type="checkbox" id="sAiEnabled"><span><strong>enable the AI reviewer</strong> (off by default). the built-in formatting guard runs either way.</span></label>
+      <div id="sAiFields" hidden>
       <label>provider
         <select id="sProvider">
           <option value="auto">automatic</option>
@@ -83,10 +97,12 @@
       <p class="small">the essay text is sent to api.anthropic.com with your key, and nowhere else. a review costs a few cents.</p>
       <label>style notes for the reviewer <textarea id="sNotes" rows="3" placeholder="e.g. all-lowercase prose, curly “ ” quotes, straight apostrophes"></textarea></label>
       <label class="chk"><input type="checkbox" id="sReviewOnSave"><span>run the AI reviewer before every save</span></label>
+      </div>
     </fieldset>
     <fieldset>
-      <legend>saving</legend>
-      <label class="chk"><input type="checkbox" id="sBackups"><span>keep a backup copy before each save, in <code id="sBackupDir"></code> inside the folder</span></label>
+      <legend>saving <button class="info-btn" data-info="folder" type="button" aria-label="about direct folder saving" title="what is this?">i</button></legend>
+      <p class="small" id="sMode"></p>
+      <label class="chk"><input type="checkbox" id="sBackups"><span>in direct mode, keep a backup copy before each save, in <code id="sBackupDir"></code> inside the folder</span></label>
     </fieldset>
     <div class="actions">
       <button type="button" id="sCancel">cancel</button>
@@ -96,8 +112,25 @@
   </form>
 </dialog>
 
+<dialog id="infoFolder" class="info">
+  <h2>direct folder saving <span class="tag">optional</span></h2>
+  <p><strong>what it is.</strong> instead of saving copies, the page writes your edits straight back into the original files. you pick a folder, and the browser asks once for permission to read and write inside that folder and nowhere else.</p>
+  <p><strong>how it works.</strong> it uses the browser's File System Access API (Chrome, Edge, Brave, Arc, Opera). every save writes through a temporary file, reads the result back, and compares it byte for byte. the previous version is copied first into <code>.op-markdown-viewer-backups/</code> inside your folder (the newest 30 per file are kept). if a file changed on disk since you opened it, you are asked before it is overwritten.</p>
+  <p><strong>what it never does.</strong> it does not touch files outside that folder, does not create files other than backups, and does not upload anything. the permission belongs to this site and that folder only; the browser shows it in the address bar, where you can revoke it. closing the tab ends the access.</p>
+  <p><strong>without it.</strong> you open files, edit, and press “save a copy”. a save dialog lets you choose where each copy goes, and your originals stay untouched unless you deliberately pick them.</p>
+  <div class="actions"><button type="button" class="closeInfo primary">got it</button></div>
+</dialog>
+<dialog id="infoAi" class="info">
+  <h2>AI reviewer <span class="tag">optional</span></h2>
+  <p><strong>what it is.</strong> a second opinion on formatting only. it reads the original and the edited text and reports broken headings, lost quotes or markers, merged paragraphs, and leftover editing artifacts. it never comments on your writing.</p>
+  <p><strong>what it needs.</strong> either your own Anthropic API key, used from this page directly to api.anthropic.com and nowhere else (kept in the tab's session storage unless you choose to remember it), or the local companion (<code>npm start</code>), which runs your own claude CLI on your machine.</p>
+  <p><strong>what it sends, and when.</strong> the file name, the original text, the edited text, and your style notes. only when you press “AI review”, or on every save if you switch that on. with your key, a review typically costs a few cents.</p>
+  <p><strong>without it.</strong> the built-in formatting guard still runs on every save, entirely inside your browser, with no network at all.</p>
+  <div class="actions"><button type="button" class="closeInfo primary">got it</button></div>
+</dialog>
+
 <div class="toast" id="toast"></div>
-<input type="file" id="filePicker" webkitdirectory multiple hidden>
+<input type="file" id="filePicker" multiple accept=".md,.markdown,text/markdown" hidden>
 <script src="./vendor/marked.umd.js" integrity="sha384-Jy8qDMspJASzATgFngF2ompIKy0StbCcvuTE65mxDm/E0/YSIF6Ndc+5V7bbwRcw"></script>
 <script src="./vendor/purify.min.js" integrity="sha384-uUMu9JDY09vBzRf9SPcK2VgUj+W/70J6Soc+Dded5P474ElQ63iv9j5N3DE7Kp3N"></script>
 <script type="module" src="./app.js"></script>

@@ -1,6 +1,6 @@
 {
   "name": "op-markdown-viewer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "Edit markdown files on your own computer, in your browser, with a formatting guard on every save. Static, local-first, no backend.",

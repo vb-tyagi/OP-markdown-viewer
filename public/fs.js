@@ -12,7 +12,7 @@
 // "fallback" files picked with <input type=file>; saving downloads an edited copy
 import { APP_SLUG, BACKUP_DIR_NAME } from './config.js';
 
-const MD_NAME = /^[^/\\\x00]+\.md$/i;
+const MD_NAME = /^[^/\\\x00]+\.(md|markdown)$/i;
 export function isMarkdownName(name) {
   return typeof name === 'string' && MD_NAME.test(name) && !name.startsWith('.');
 }
@@ -63,7 +63,7 @@ async function readHandle(fh) {
 }
 
 function slugOf(name) {
-  return name.replace(/\.md$/i, '');
+  return name.replace(/\.(md|markdown)$/i, '');
 }
 
 function stamp() {
@@ -159,10 +159,10 @@ async function pruneBackups(sub) {
   }
 }
 
-// ---------- fallback: plain File objects, saving downloads a copy ----------
+// ---------- files mode: plain File objects picked without any permission; saving writes a copy ----------
 class FallbackFolder {
   constructor(fileList, name) {
-    this.kind = 'fallback';
+    this.kind = 'files';
     this.name = name;
     this.canWrite = false;
     this.canBackup = false;
@@ -194,7 +194,7 @@ class FallbackFolder {
     return { lastModified: f.lastModified, size: f.size };
   }
   async write() {
-    throw new Error('this browser cannot write to the folder; use download instead');
+    throw new Error('files mode never writes to the originals; use saveCopy instead');
   }
   async backup() {
     return null;
@@ -206,6 +206,36 @@ class FallbackFolder {
 
 export function folderFromFiles(fileList, name) {
   return new FallbackFolder(fileList, name);
+}
+
+// Save a copy wherever the user chooses: a native "save as" dialog where the browser has one,
+// otherwise a plain download. Writing to the picked file is verified byte for byte.
+export function supportsSavePicker() {
+  return typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function';
+}
+export async function saveCopy(name, text, opts) {
+  const bytes = encodeText(text, opts);
+  if (supportsSavePicker()) {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: name,
+      id: `${APP_SLUG}-save`,
+      types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown'] } }],
+    });
+    const w = await handle.createWritable();
+    try {
+      await w.write(bytes);
+      await w.close();
+    } catch (e) {
+      try { await w.abort(); } catch {}
+      throw e;
+    }
+    const f = await handle.getFile();
+    const back = new Uint8Array(await f.arrayBuffer());
+    if (!bytesEqual(back, bytes)) throw new Error('verification failed: the saved file does not match the editor');
+    return { method: 'save-as', name: handle.name, bytes: bytes.length };
+  }
+  download(name, text, opts);
+  return { method: 'download', name, bytes: bytes.length };
 }
 
 export function download(name, text, opts) {

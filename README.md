@@ -1,30 +1,43 @@
 # OP-markdown-viewer
 
-Edit markdown files on your own computer, in your browser. Every save writes straight to the file on disk, through a formatting guard that catches accidental damage. Nothing is uploaded.
+Edit markdown files in your browser. Open files, make your changes, and save copies wherever you like, with a formatting guard that catches accidental damage on every save. Nothing is uploaded, and nothing asks for permission. Two features are there if you want them, and off until you do: saving straight back into a folder, and an AI reviewer.
 
 **Live:** https://op-markdown-viewer.vercel.app · **Try it:** open the live page and click "try the demo".
 
 ## What it does
 
-- Open a folder of `.md` files. The page lists them, shows the raw markdown next to a rendered preview, and lets you walk through them one by one (`⌘[` / `⌘]`), marking each as done.
-- `⌘S` saves. Before writing, a **formatting guard** compares the structure of what you loaded with what you are saving. A clean edit saves instantly. Warnings or damage are shown with the exact issue, and you decide.
-- An optional **AI reviewer** reads the before and after and reports only formatting and structure problems, never opinions on the prose. It runs with your own Anthropic API key, or through your local `claude` CLI when you run the companion server.
+- **Open files** (or drop them on the page). No permission prompt, works in every browser. The page lists them, shows the raw markdown next to a rendered preview, and lets you walk through them one by one (`⌘[` / `⌘]`), marking each as done.
+- `⌘S` **saves a copy**. In Chromium browsers a save dialog lets you choose where each copy goes (pick the original if you want to overwrite it); elsewhere the copy is downloaded. Your originals are never modified behind your back.
+- Before every save, a **formatting guard** compares the structure of what you loaded with what you are saving. A clean edit saves instantly. Warnings or damage are shown with the exact issue, and you decide.
+
+Two optional features, each with an (i) explainer in the app and off until you choose them:
+
+- **Direct folder saving.** Open a folder instead of files. The browser asks once for permission to read and write inside that one folder, and saves then go straight back into the original files, with a backup copy first. Chromium browsers only.
+- **AI reviewer.** A second opinion on formatting only, never on the prose. It runs with your own Anthropic API key, or through your local `claude` CLI when you run the companion server. Enable it in settings.
 
 ## Browser support
 
-| Browser | Saving |
-|---|---|
-| Chrome, Edge, Brave, Arc, Opera (Chromium) | In place, straight to the file |
-| Safari, Firefox | Open files, edit, download the edited copy |
+| Browser | Files mode (default) | Direct folder saving (opt-in) |
+|---|---|---|
+| Chrome, Edge, Brave, Arc, Opera (Chromium) | Open, edit, save a copy through a save dialog | Yes |
+| Safari, Firefox | Open, edit, download the edited copy | Not available |
 
-The in-place path uses the [File System Access API](https://developer.mozilla.org/docs/Web/API/File_System_Access_API). The browser asks once per folder for permission to read and write. Only `.md` files at the top level of the folder are touched.
+Direct saving uses the [File System Access API](https://developer.mozilla.org/docs/Web/API/File_System_Access_API). The browser asks once per folder for permission to read and write, shows the grant in the address bar, and forgets it when the tab closes. Only `.md` and `.markdown` files at the top level of the folder are touched.
 
 ## How saves are protected
 
+In every mode:
+
 1. The exact text in the editor is written. Nothing is reformatted. A file's BOM is preserved, and so are its line endings when they are consistently LF or CRLF. A file with mixed line endings is shown with a banner and saved with LF throughout. Files that are not valid UTF-8 open read-only.
-2. Before every real save, the previous version is copied to `.op-markdown-viewer-backups/<file>/<timestamp>.md` inside the folder (the newest 30 per file are kept; can be turned off in settings). If the folder is a git repository, add that backup folder to its `.gitignore`.
-3. The write goes through the browser's atomic swap-file mechanism and is read back and compared byte for byte.
-4. If the file changed on disk since you opened it, the save stops and asks whether to overwrite.
+2. Files written through the browser's file APIs are read back and compared byte for byte.
+
+In files mode, the original file is never written to by the page. The copy goes wherever you point the save dialog, or to your downloads.
+
+In direct mode, additionally:
+
+3. Before every save, the previous version is copied to `.op-markdown-viewer-backups/<file>/<timestamp>.md` inside the folder (the newest 30 per file are kept; can be turned off in settings). If the folder is a git repository, add that backup folder to its `.gitignore`.
+4. The write goes through the browser's atomic swap-file mechanism.
+5. If the file changed on disk since you opened it, the save stops and asks whether to overwrite.
 
 ## The formatting guard
 
@@ -44,7 +57,7 @@ Every rule is relative to the original file, so the guard adapts to each file's 
 
 ## The AI reviewer
 
-Two providers, chosen automatically:
+Off by default. Turn it on in settings (or from the start screen), then pick a provider; "automatic" uses whichever is available:
 
 - **Your Anthropic API key.** Enter it in settings. It is kept in `sessionStorage` (forgotten when the tab closes) unless you tick "remember". The page's Content Security Policy only allows requests to `api.anthropic.com`, so the key cannot go anywhere else. Default model is Claude Opus 5; Sonnet 5 and Haiku 4.5 are available. A review costs a few cents and takes a few seconds.
 - **Local `claude` CLI.** Run `npm start` and the page detects the companion, which runs reviews through the CLI on your machine with no API key. The CLI is started with its tools, MCP servers, hooks, memory and settings all switched off.

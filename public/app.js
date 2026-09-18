@@ -15,7 +15,9 @@ const els = {
 const SETTINGS_KEY = `${APP_SLUG}.settings`;
 const KEY_NAME = `${APP_SLUG}.anthropic-key`;
 const DONE_KEY = `${APP_SLUG}.done`;
-const DEFAULTS = { provider: 'auto', model: DEFAULT_MODEL, styleNotes: '', backups: true, reviewOnSave: false, preview: true };
+// Both optional features are off until the user opts in: direct folder saving is chosen per session on the
+// start screen, and the AI reviewer is a setting (`ai`) that defaults to false.
+const DEFAULTS = { ai: false, provider: 'auto', model: DEFAULT_MODEL, styleNotes: '', backups: true, reviewOnSave: false, preview: true };
 let settings = { ...DEFAULTS, ...loadJSON(SETTINGS_KEY, {}) };
 
 function loadJSON(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } }
@@ -60,14 +62,22 @@ function titleFrom(content, fallback) {
     if (t) return t[1];
   }
   const h1 = content.match(/^#\s+(.+)$/m);
-  return h1 ? h1[1] : fallback.replace(/\.md$/i, '');
+  return h1 ? h1[1] : fallback.replace(/\.(md|markdown)$/i, '');
 }
 function showBanner(text) { els.banner.textContent = text; els.banner.hidden = !text; }
 function folderBanner() {
   if (!folder) return '';
-  if (folder.kind === 'fallback') return 'read-only browser mode: this browser cannot write to your folder, so "save" downloads the edited copy instead. Chrome, Edge, Brave, and Arc can save in place.';
-  if (folder.kind === 'sandbox') return 'demo sandbox: these sample files live inside your browser, not on your disk. everything else works exactly like a real folder.';
+  if (folder.kind === 'files') {
+    return FS.supportsSavePicker()
+      ? 'files mode: saving opens a save dialog, so you choose where each copy goes. your originals stay untouched unless you pick them. to save straight into a folder instead, use “open a folder for direct saving” on the start screen.'
+      : 'files mode: saving downloads the edited copy. your originals stay untouched.';
+  }
+  if (folder.kind === 'sandbox') return 'demo sandbox: these sample files live inside your browser, not on your disk. everything else works exactly like direct folder saving.';
   return '';
+}
+function applyAiVisibility() {
+  $('review').hidden = !settings.ai;
+  $('aiOnSaveLabel').hidden = !settings.ai || !folder;
 }
 
 // ---------- preview ----------
@@ -143,7 +153,7 @@ async function mountFolder(f) {
   const listed = await folder.list();
   files = [];
   for (const it of listed) {
-    let title = it.name.replace(/\.md$/i, '');
+    let title = it.name.replace(/\.(md|markdown)$/i, '');
     let words = 0;
     try { const r = await folder.read(it.name); title = titleFrom(r.text, it.name); words = wordCount(r.text); } catch {}
     files.push({ ...it, title, words });
@@ -154,14 +164,15 @@ async function mountFolder(f) {
   els.ta.hidden = false;
   els.sidebar.hidden = false;
   els.folderChip.hidden = false;
-  els.folderName.textContent = folder.kind === 'sandbox' ? 'demo sandbox' : folder.name;
+  els.folderName.textContent = folder.kind === 'sandbox' ? 'demo sandbox' : folder.kind === 'files' ? `${files.length} file${files.length === 1 ? '' : 's'} (copies)` : `${folder.name} (direct)`;
+  $('saveLabel').textContent = folder.canWrite ? 'save' : 'save a copy';
   $('togglePreview').hidden = false;
-  $('aiOnSaveLabel').hidden = false;
+  applyAiVisibility();
   $('resetDemo').hidden = folder.kind !== 'sandbox';
   applyPreview();
   showBanner(folderBanner());
   renderList();
-  if (!files.length) { setStatus('no .md files in this folder'); return; }
+  if (!files.length) { setStatus('no markdown files found'); showBanner('no .md files were found. in files mode, pick one or more .md files; in direct mode, the folder must contain .md files at its top level.'); return; }
   let h = '';
   try { h = decodeURIComponent(location.hash.slice(1)); } catch {}
   await open(files.some((x) => x.name === h) ? h : files[0].name);
@@ -211,7 +222,7 @@ function aiHtml(ai) {
 }
 function wireAiButtons() {
   const c = inPanel('cancelReview'); if (c) c.onclick = () => { if (reviewAbort) reviewAbort.abort(); };
-  const s = inPanel('openSettingsInline'); if (s) s.onclick = openSettings;
+  const s = inPanel('openSettingsInline'); if (s) s.onclick = () => openSettings(false);
 }
 function showGuard(g, { forSave = false, ai = null } = {}) {
   els.panel.dataset.kind = 'guard';
@@ -259,6 +270,7 @@ function runCheck() {
 }
 
 function resolveProvider() {
+  if (!settings.ai) return null; // the reviewer is opt-in
   const p = settings.provider;
   if (p === 'off') return null;
   if (p === 'cli') return cliInfo ? 'cli' : null;
@@ -304,7 +316,7 @@ async function saveFlow() {
   if (!isDirty()) { toast('no changes'); return; }
   if (!cur.valid) { alert('this file is not valid UTF-8 and was opened read-only.'); return; }
   const g = guard(cur.text, els.ta.value);
-  if (settings.reviewOnSave) { await runReviewInto(g, true); return; } // the user confirms in the panel
+  if (settings.ai && settings.reviewOnSave) { await runReviewInto(g, true); return; } // the user confirms in the panel
   if (g.verdict === 'clean') return doSave();
   showGuard(g, { forSave: true });
   setStatus('needs your call');
@@ -319,10 +331,17 @@ async function doSave(force = false) {
   const opts = { bom: cur.bom, eol: cur.eol };
   try {
     if (!folder.canWrite) {
-      FS.download(cur.name, text, opts);
+      // files mode: never touch the original; the user picks where the copy goes.
+      let r;
+      try {
+        r = await FS.saveCopy(cur.name, text, opts);
+      } catch (e) {
+        if (e && e.name === 'AbortError') { setStatus('save cancelled'); return; }
+        throw e;
+      }
       cur.text = text;
-      finishSave('downloaded the edited copy');
-      toast('downloaded ✓');
+      finishSave(r.method === 'save-as' ? `saved a copy as ${r.name} (${r.bytes} bytes)` : `downloaded ${r.name} (${r.bytes} bytes)`);
+      toast(r.method === 'save-as' ? 'copy saved ✓' : 'downloaded ✓');
       return;
     }
     if (!force) {
@@ -365,8 +384,11 @@ function finishSave(status) {
 }
 
 // ---------- settings dialog ----------
-const S = Object.fromEntries(["sBackupDir", "sBackups", "sCancel", "sCliNote", "sForget", "sKey", "sModel", "sNotes", "sProvider", "sProviderCli", "sRemember", "sReviewOnSave", "sVersion"].map((id) => [id, $(id)]));
-function openSettings() {
+const S = Object.fromEntries(["sAiEnabled", "sAiFields", "sBackupDir", "sBackups", "sCancel", "sCliNote", "sForget", "sKey", "sModel", "sMode", "sNotes", "sProvider", "sProviderCli", "sRemember", "sReviewOnSave", "sVersion"].map((id) => [id, $(id)]));
+function openSettings(focusAi = false) {
+  S.sAiEnabled.checked = focusAi ? true : settings.ai;
+  S.sAiFields.hidden = !S.sAiEnabled.checked;
+  S.sMode.textContent = !folder ? 'no files open yet.' : folder.kind === 'files' ? 'current mode: files. saving writes a copy where you choose; originals are untouched.' : folder.kind === 'sandbox' ? 'current mode: demo sandbox (behaves like direct saving).' : `current mode: direct saving into “${folder.name}”.`;
   S.sProvider.value = settings.provider;
   S.sProviderCli.hidden = !cliInfo;
   S.sProviderCli.disabled = !cliInfo;
@@ -390,15 +412,17 @@ function saveSettings() {
   setKey(key, S.sRemember.checked);
   settings = {
     ...settings,
-    provider: S.sProvider.value,
-    model: S.sModel.value,
+    ai: S.sAiEnabled.checked,
+    provider: S.sProvider.value || 'auto',
+    model: MODELS.some((m) => m.id === S.sModel.value) ? S.sModel.value : (settings.model || DEFAULT_MODEL),
     styleNotes: S.sNotes.value,
     reviewOnSave: S.sReviewOnSave.checked,
     backups: S.sBackups.checked,
   };
   saveJSON(SETTINGS_KEY, settings);
   $('aiOnSave').checked = settings.reviewOnSave;
-  toast('settings saved');
+  applyAiVisibility();
+  toast(settings.ai ? 'settings saved · AI reviewer on' : 'settings saved');
   return true;
 }
 
@@ -416,13 +440,14 @@ async function loadSamples() {
 async function showWelcome() {
   const supported = FS.supportsDirectoryPicker();
   $('openFolder').hidden = !supported;
-  $('pickFilesLabel').hidden = supported;
   $('unsupportedNote').hidden = supported;
   $('tryDemo').hidden = !FS.supportsSandbox();
   const last = supported ? await FS.lastFolderName() : null;
   $('reopenFolder').hidden = !last;
   if (last) $('reopenFolder').textContent = `reopen “${last}”`;
   $('backupDirName').textContent = BACKUP_DIR_NAME;
+  $('enableAi').textContent = settings.ai ? 'AI reviewer: on (settings)' : 'turn on the AI reviewer';
+  $('saveCopyHow').textContent = FS.supportsSavePicker() ? 'a save dialog lets you choose where each copy goes.' : 'each copy is downloaded.';
 }
 async function tryOpen(fn, label) {
   setStatus(label);
@@ -448,14 +473,28 @@ $('openFolder').onclick = () => tryOpen(FS.openFolder, 'choose a folder…');
 $('reopenFolder').onclick = () => tryOpen(FS.reopenLastFolder, 'reopening…');
 $('tryDemo').onclick = () => tryOpen(async () => FS.openSandbox(await loadSamples()), 'loading the demo…');
 $('resetDemo').onclick = () => { if (confirm('reset the demo sandbox to the original sample files?')) tryOpen(async () => FS.resetSandbox(await loadSamples()), 'resetting…'); };
-els.filePicker.onchange = () => {
-  const list = els.filePicker.files;
+function openFileList(list) {
   if (!list || !list.length) return;
-  const first = list[0].webkitRelativePath || '';
-  const name = first.includes('/') ? first.split('/')[0] : 'selected files';
-  tryOpen(async () => FS.folderFromFiles(list, name), 'reading files…');
-  els.filePicker.value = '';
-};
+  tryOpen(async () => {
+    const f = FS.folderFromFiles(list, 'files');
+    if (!(await f.list()).length) throw new Error('none of the selected files is a .md or .markdown file');
+    return f;
+  }, 'reading files…');
+}
+els.filePicker.onchange = () => { openFileList(els.filePicker.files); els.filePicker.value = ''; };
+// Drag files onto the start screen: the same no-permission files mode.
+els.welcome.addEventListener('dragover', (e) => { e.preventDefault(); els.welcome.classList.add('drop'); });
+els.welcome.addEventListener('dragleave', () => els.welcome.classList.remove('drop'));
+els.welcome.addEventListener('drop', (e) => { e.preventDefault(); els.welcome.classList.remove('drop'); openFileList(e.dataTransfer && e.dataTransfer.files); });
+$('enableAi').onclick = () => openSettings(!settings.ai);
+// (i) explainers: fixed map, never an arbitrary id from the DOM.
+const INFO = { folder: $('infoFolder'), ai: $('infoAi') };
+for (const b of document.querySelectorAll('.info-btn')) {
+  const d = INFO[b.dataset.info];
+  if (d) b.onclick = (e) => { e.preventDefault(); d.showModal(); };
+}
+for (const d of Object.values(INFO)) d.querySelector('.closeInfo').onclick = () => d.close();
+S.sAiEnabled.onchange = () => { S.sAiFields.hidden = !S.sAiEnabled.checked; };
 $('changeFolder').onclick = () => {
   if (isDirty() && !confirm('you have unsaved changes. discard them?')) return;
   if (reviewAbort) reviewAbort.abort();
@@ -463,7 +502,7 @@ $('changeFolder').onclick = () => {
   els.ta.value = ''; els.article.innerHTML = ''; els.fm.hidden = true;
   els.main.classList.add('no-folder');
   els.welcome.hidden = false; els.toolbar.hidden = true; els.ta.hidden = true; els.preview.hidden = true; els.sidebar.hidden = true;
-  els.folderChip.hidden = true; $('togglePreview').hidden = true; $('aiOnSaveLabel').hidden = true;
+  els.folderChip.hidden = true; $('togglePreview').hidden = true; applyAiVisibility();
   showBanner(''); hidePanel(); updateMeta(); history.replaceState(null, '', location.pathname);
   showWelcome(); setStatus('ready');
 };
@@ -485,7 +524,7 @@ $('markDone').onclick = () => {
 };
 $('aiOnSave').onchange = (e) => { settings.reviewOnSave = e.target.checked; saveJSON(SETTINGS_KEY, settings); };
 $('togglePreview').onclick = () => { settings.preview = !settings.preview; saveJSON(SETTINGS_KEY, settings); applyPreview(); };
-$('openSettings').onclick = openSettings;
+$('openSettings').onclick = () => openSettings(false);
 S.sCancel.onclick = () => els.settings.close();
 S.sForget.onclick = () => { setKey('', false); S.sKey.value = ''; S.sRemember.checked = false; toast('key forgotten'); };
 $('settingsForm').onsubmit = (e) => { e.preventDefault(); if (saveSettings()) els.settings.close(); };
@@ -509,6 +548,7 @@ window.addEventListener('beforeunload', (e) => { if (isDirty()) { e.preventDefau
 // ---------- boot ----------
 (async () => {
   applyPreview();
+  applyAiVisibility();
   await showWelcome();
   cliInfo = await probeCli();
   setStatus('ready');
