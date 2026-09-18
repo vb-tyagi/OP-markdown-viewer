@@ -3,6 +3,7 @@ import { guard, applyFixes } from './guard.js';
 import * as FS from './fs.js';
 import { MODELS, DEFAULT_MODEL, looksLikeKey, reviewWithAnthropic, probeCli, reviewWithCli } from './review.js';
 import { createEditor } from './mdeditor.js';
+import { diffLines, hunks } from './diff.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -289,10 +290,71 @@ function wireAiButtons() {
   const c = inPanel('cancelReview'); if (c) c.onclick = () => { if (reviewAbort) reviewAbort.abort(); };
   const s = inPanel('openSettingsInline'); if (s) s.onclick = () => openSettings(false);
 }
+// "What will change": a line diff between the file as loaded and what would be written.
+const DIFF_MAX_LINES = 400;
+function diffElement(before, after) {
+  const d = diffLines(before, after);
+  const details = document.createElement('details');
+  details.className = 'diff';
+  const summary = document.createElement('summary');
+  if (!d.changed) {
+    summary.textContent = 'what will change: nothing, the file is identical';
+    details.appendChild(summary);
+    return details;
+  }
+  summary.textContent = `what will change: ${d.added} line${d.added === 1 ? '' : 's'} added, ${d.removed} removed`;
+  details.appendChild(summary);
+  details.open = true;
+  const pre = document.createElement('div');
+  pre.className = 'diff-body';
+  let shown = 0;
+  for (const h of hunks(d.ops, 2)) {
+    if (h.type === 'skip') {
+      const s = document.createElement('div');
+      s.className = 'diff-skip';
+      s.textContent = `… ${h.count} unchanged line${h.count === 1 ? '' : 's'} …`;
+      pre.appendChild(s);
+      continue;
+    }
+    for (const l of h.lines) {
+      if (shown++ > DIFF_MAX_LINES) break;
+      const row = document.createElement('div');
+      row.className = 'diff-line ' + l.type;
+      const sign = document.createElement('span');
+      sign.className = 'diff-sign';
+      sign.textContent = l.type === 'add' ? '+' : l.type === 'del' ? '−' : ' ';
+      row.appendChild(sign);
+      const text = document.createElement('span');
+      text.className = 'diff-text';
+      if (l.note) {
+        text.textContent = `(${l.note})`;
+      } else if (l.parts) {
+        text.append(l.parts.pre);
+        const mid = document.createElement('mark');
+        mid.textContent = l.parts.mid;
+        text.append(mid, l.parts.post);
+      } else {
+        text.textContent = l.line;
+      }
+      row.appendChild(text);
+      pre.appendChild(row);
+    }
+  }
+  if (shown > DIFF_MAX_LINES) {
+    const more = document.createElement('div');
+    more.className = 'diff-skip';
+    more.textContent = `… only the first ${DIFF_MAX_LINES} changed lines are shown …`;
+    pre.appendChild(more);
+  }
+  details.appendChild(pre);
+  return details;
+}
+
 function showGuard(g, { forSave = false, ai = null } = {}) {
   els.panel.dataset.kind = 'guard';
   const label = g.verdict === 'clean' ? 'formatting preserved' : g.verdict === 'warn' ? 'warnings' : 'damage detected';
   let html = `<div class="row"><span class="badge ${esc(g.verdict)}">${label}</span><span>${esc(g.summary)}</span></div>`;
+  html += '<div id="diffSlot"></div>';
   html += issueList(g.issues);
   html += '<div class="actions">';
   if (g.fixes && g.fixes.length) html += `<button id="applyFixes">apply safe fixes (${esc(g.fixes.join(', '))})</button>`;
@@ -304,6 +366,7 @@ function showGuard(g, { forSave = false, ai = null } = {}) {
   if (ai) html += `<div class="section" id="aiSection">${aiHtml(ai)}</div>`;
   els.panel.innerHTML = html;
   els.panel.classList.add('show');
+  if (cur) inPanel('diffSlot').replaceWith(diffElement(cur.text, currentMarkdown()));
   const af = inPanel('applyFixes');
   if (af) af.onclick = () => {
     editor.setMarkdown(applyFixes(currentMarkdown(), g.fixes), { fresh: false, origin: 'fix' });

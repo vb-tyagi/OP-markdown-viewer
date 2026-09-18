@@ -14,7 +14,7 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node test-guard.mjs && node test-editor.mjs",
+    "test": "node test-guard.mjs && node test-editor.mjs && node test-diff.mjs",
     "verify-vendor": "node scripts/verify-vendor.mjs",
     "build:editor": "node scripts/build-editor.mjs"
   },

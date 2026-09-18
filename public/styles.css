@@ -140,6 +140,19 @@ dialog legend .info-btn { margin-left: 4px; }
 #panel li .detail { display: block; color: var(--muted); font-family: var(--mono); font-size: 11.5px; white-space: pre-wrap; margin-top: 2px; }
 #panel .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 #panel .section { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+#panel details.diff { margin: 6px 0 10px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+#panel details.diff summary { cursor: pointer; font-weight: 600; font-size: 12.5px; color: var(--muted); }
+#panel details.diff[open] summary { margin-bottom: 6px; }
+.diff-body { font-family: var(--mono); font-size: 12px; line-height: 1.5; max-height: 40vh; overflow: auto; }
+.diff-line { display: grid; grid-template-columns: 14px 1fr; white-space: pre-wrap; overflow-wrap: anywhere; padding: 0 4px; border-radius: 3px; }
+.diff-line.add { background: color-mix(in srgb, var(--ok) 16%, transparent); }
+.diff-line.del { background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--muted); }
+.diff-line.equal { color: var(--muted); }
+.diff-line mark { background: color-mix(in srgb, var(--warn) 45%, transparent); color: inherit; border-radius: 2px; }
+.diff-line.del mark { background: color-mix(in srgb, var(--err) 40%, transparent); }
+.diff-line.add mark { background: color-mix(in srgb, var(--ok) 40%, transparent); }
+.diff-sign { color: var(--muted); user-select: none; }
+.diff-skip { color: var(--muted); font-style: italic; padding: 2px 4px; }
 .spin { display: inline-block; width: 10px; height: 10px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
