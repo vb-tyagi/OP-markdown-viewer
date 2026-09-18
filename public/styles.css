@@ -11,7 +11,9 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; }
-body { font-family: var(--sans); color: var(--ink); background: var(--bg); display: grid; grid-template-rows: 48px auto 1fr; overflow: hidden; }
+body { font-family: var(--sans); color: var(--ink); background: var(--bg); display: grid; grid-template-rows: 48px auto 1fr; overflow: hidden; height: 100vh; height: 100dvh; }
+.narrow-only { display: none; }
+.drawer-backdrop { position: fixed; inset: 48px 0 0 0; background: rgba(0, 0, 0, .35); z-index: 19; }
 
 header { display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
 header .brand { font-weight: 600; letter-spacing: .01em; white-space: nowrap; }
@@ -108,7 +110,7 @@ main.no-folder #editor { grid-template-rows: 1fr; border-right: 0; overflow-y: a
 
 /* markdown source pane */
 #source { border-left: 1px solid var(--line); background: var(--panel); display: grid; grid-template-rows: auto 1fr; min-height: 0; }
-.src-head { display: flex; justify-content: space-between; gap: 10px; padding: 8px 12px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); }
+.src-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 12px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); }
 #srcText { width: 100%; height: 100%; resize: none; border: 0; outline: 0; padding: 16px 18px; background: var(--panel); color: var(--ink); font-family: var(--mono); font-size: 13px; line-height: 1.6; tab-size: 4; white-space: pre-wrap; overflow-wrap: break-word; }
 
 .welcome { max-width: 640px; margin: 8vh auto 40px; padding: 0 24px; font-family: var(--serif); }
@@ -178,3 +180,36 @@ dialog .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top
 
 .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
 .toast.show { opacity: 1; }
+
+
+/* ---------- phones and tablets ---------- */
+@media (max-width: 900px) {
+  .narrow-only { display: inline-block; }
+  header { gap: 6px; padding: 0 8px; }
+  header .status { display: none; }
+  header .chip { max-width: 32vw; }
+  header #aiOnSaveLabel { display: none; }
+  main, main.with-source, main.no-folder { grid-template-columns: 1fr; }
+  #sidebar { position: fixed; top: 48px; bottom: 0; left: 0; width: min(320px, 85vw); z-index: 20; transform: translateX(-102%); transition: transform .18s ease; box-shadow: 4px 0 24px rgba(0, 0, 0, .25); border-right: 1px solid var(--line); }
+  body.drawer-open #sidebar { transform: none; }
+  #source { position: fixed; top: 48px; bottom: 0; left: 0; right: 0; z-index: 15; border-left: 0; }
+  #editor { border-right: 0; }
+  .toolbar, .fmt-toolbar, .findbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .toolbar::-webkit-scrollbar, .fmt-toolbar::-webkit-scrollbar, .findbar::-webkit-scrollbar { display: none; }
+  .toolbar .meta, .toolbar .grow { display: none; }
+  .toolbar button, .fmt-toolbar button, .fmt-toolbar select, .findbar button, header button { min-height: 36px; white-space: nowrap; flex: none; }
+  .fmt-toolbar .grow { display: none; }
+  .findbar input[type="search"], .findbar input[type="text"] { min-width: 120px; flex: none; }
+  .doc-scroll { padding: 16px 16px 140px; }
+  .doc-body { font-size: 17px; }
+  .doc-body h1 { font-size: 27px; }
+  .welcome { margin: 4vh auto 40px; padding: 0 18px; }
+  .welcome h1 { font-size: 30px; }
+  .welcome .lede { font-size: 17px; }
+  #panel { max-height: 50%; }
+  dialog { padding: 16px; }
+}
+@media (max-width: 480px) {
+  header .brand { display: none; }
+  .doc-scroll { padding: 12px 12px 160px; }
+}

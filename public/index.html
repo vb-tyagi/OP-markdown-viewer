@@ -14,6 +14,7 @@
 </head>
 <body>
 <header>
+  <button id="toggleFiles" class="narrow-only" hidden title="show the file list">files</button>
   <span class="brand" id="brand">OP-markdown-viewer</span>
   <span class="chip" id="folderChip" hidden><span id="folderName"></span><button id="changeFolder" class="link">change</button></span>
   <span class="grow"></span>
@@ -23,6 +24,7 @@
   <span class="status" id="status">loading…</span>
 </header>
 <div id="banner" class="banner" hidden></div>
+<div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
 <main id="main" class="no-folder">
   <aside id="sidebar" hidden>
     <div class="head"><span id="count"></span><span id="doneCount"></span></div>
@@ -129,7 +131,7 @@
     <div id="panel"></div>
   </section>
   <section id="source" hidden>
-    <div class="src-head"><span>markdown source</span><span class="small">edits here update the document, and vice versa</span></div>
+    <div class="src-head"><span>markdown source</span><span class="small">edits here update the document, and vice versa</span><button id="closeSource" class="small narrow-only">close</button></div>
     <textarea id="srcText" spellcheck="false"></textarea>
   </section>
 </main>

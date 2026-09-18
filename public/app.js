@@ -277,6 +277,7 @@ async function mountFolder(f) {
   els.docArea.hidden = false;
   els.sidebar.hidden = false;
   els.folderChip.hidden = false;
+  $('toggleFiles').hidden = !window.matchMedia('(max-width: 900px)').matches;
   els.folderName.textContent = folder.kind === 'sandbox' ? 'demo sandbox' : folder.kind === 'files' ? `${files.length} file${files.length === 1 ? '' : 's'} (copies)` : `${folder.name} (direct)`;
   $('saveLabel').textContent = folder.canWrite ? 'save' : 'save a copy';
   $('toggleSource').hidden = false;
@@ -309,6 +310,7 @@ async function open(name) {
   renderList();
   updateMeta();
   history.replaceState(null, '', '#' + encodeURIComponent(name));
+  if (document.body.classList.contains('drawer-open')) setDrawer(false);
   $('markDone').textContent = done[doneKey(name)] ? 'unmark done' : 'mark done';
   setStatus(r.valid ? 'loaded' : 'opened read-only: the file is not valid UTF-8');
   showBanner(r.mixed ? 'this file has mixed line endings. the editor shows it with LF endings, and saving will write LF throughout.' : folderBanner());
@@ -665,6 +667,16 @@ els.welcome.addEventListener('dragover', (e) => { e.preventDefault(); els.welcom
 els.welcome.addEventListener('dragleave', () => els.welcome.classList.remove('drop'));
 els.welcome.addEventListener('drop', (e) => { e.preventDefault(); els.welcome.classList.remove('drop'); openFileList(e.dataTransfer && e.dataTransfer.files); });
 $('enableAi').onclick = () => openSettings(!settings.ai);
+// narrow screens: the file list is a drawer, the markdown pane is an overlay
+const narrow = window.matchMedia('(max-width: 900px)');
+function setDrawer(open) {
+  document.body.classList.toggle('drawer-open', open);
+  $('drawerBackdrop').hidden = !open;
+}
+$('toggleFiles').onclick = () => setDrawer(!document.body.classList.contains('drawer-open'));
+$('drawerBackdrop').onclick = () => setDrawer(false);
+$('closeSource').onclick = () => { settings.source = false; saveJSON(SETTINGS_KEY, settings); applySource(); };
+narrow.addEventListener('change', () => { if (!narrow.matches) setDrawer(false); $('toggleFiles').hidden = !narrow.matches || !folder; });
 // (i) explainers: fixed map, never an arbitrary id from the DOM.
 const INFO = { folder: $('infoFolder'), ai: $('infoAi') };
 for (const b of document.querySelectorAll('.info-btn')) {
@@ -680,7 +692,7 @@ $('changeFolder').onclick = () => {
   editor.setMarkdown('', { fresh: true });
   els.main.classList.add('no-folder');
   els.welcome.hidden = false; els.toolbar.hidden = true; els.fmtToolbar.hidden = true; els.docArea.hidden = true; els.sidebar.hidden = true;
-  els.folderChip.hidden = true; $('toggleSource').hidden = true; applyAiVisibility(); applySource();
+  els.folderChip.hidden = true; $('toggleSource').hidden = true; $('toggleFiles').hidden = true; setDrawer(false); applyAiVisibility(); applySource();
   els.findBar.hidden = true; els.fileFilter.value = '';
   showBanner(''); hidePanel(); updateMeta(); history.replaceState(null, '', location.pathname);
   showWelcome(); setStatus('ready');
