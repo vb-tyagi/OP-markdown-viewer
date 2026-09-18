@@ -317,3 +317,36 @@ export function parseMarkdown(text) {
 export function serializeMarkdown(doc, baseline, fmRaw) {
   return fmRaw + serializeBody(doc, baseline);
 }
+
+// ---------- find ----------
+// All occurrences of `query` in the document's text blocks, as document positions. Text is matched
+// across mark boundaries; inline leaf nodes count as one character (a soft break as a space).
+export function findMatches(doc, query, caseSensitive = false) {
+  if (!query) return [];
+  const q = caseSensitive ? query : query.toLowerCase();
+  const out = [];
+  doc.descendants((node, pos) => {
+    if (!node.isTextblock) return true;
+    let text = '';
+    const map = [];
+    node.forEach((child, offset) => {
+      const base = pos + 1 + offset;
+      if (child.isText) {
+        for (let i = 0; i < child.text.length; i++) map.push(base + i);
+        text += child.text;
+      } else {
+        map.push(base);
+        text += child.type.name === 'soft_break' ? ' ' : '\uFFFC';
+      }
+    });
+    map.push(pos + 1 + node.content.size);
+    const hay = caseSensitive ? text : text.toLowerCase();
+    let i = 0;
+    while ((i = hay.indexOf(q, i)) !== -1) {
+      out.push({ from: map[i], to: map[i + q.length] });
+      i += q.length;
+    }
+    return false;
+  });
+  return out;
+}

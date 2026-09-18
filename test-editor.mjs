@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EditorState } from './public/vendor/editor-bundle.js';
-import { schema, parseMarkdown, serializeMarkdown, detectConventions, splitFrontMatter, safeHref } from './public/mdcore.js';
+import { schema, parseMarkdown, serializeMarkdown, detectConventions, splitFrontMatter, safeHref, findMatches } from './public/mdcore.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const samplesDir = path.join(here, 'public', 'samples');
@@ -162,6 +162,22 @@ console.log('== front matter and misc ==');
   const stE = EditorState.create({ doc: pe.doc });
   const withEmpty = stE.apply(stE.tr.insert(pe.doc.content.size, schema.nodes.paragraph.create())).doc;
   ok(serializeMarkdown(withEmpty, pe.baseline, pe.fmRaw) === 'one\n', 'a trailing empty paragraph adds nothing');
+}
+
+console.log('== find ==');
+{
+  const p = parseMarkdown('The **notebook** is a *notebook*. NOTEBOOK!\n\n> a notebook in a quote\n');
+  const m = findMatches(p.doc, 'notebook');
+  ok(m.length === 4, 'case-insensitive find crosses marks and blocks', m.length);
+  ok(m.every((x) => p.doc.textBetween(x.from, x.to).toLowerCase() === 'notebook'), 'every match maps to the right positions');
+  ok(findMatches(p.doc, 'notebook', true).length === 3 && findMatches(p.doc, 'NOTEBOOK', true).length === 1, 'match case works');
+  ok(findMatches(p.doc, '').length === 0 && findMatches(p.doc, 'zzz').length === 0, 'empty and missing queries return nothing');
+  const st = EditorState.create({ doc: p.doc });
+  let tr = st.tr;
+  for (let i = m.length - 1; i >= 0; i--) tr = tr.insertText('journal', m[i].from, m[i].to);
+  const after = st.apply(tr).doc;
+  ok(findMatches(after, 'notebook').length === 0 && findMatches(after, 'journal').length === 4, 'replace-all in reverse order hits every match');
+  ok(serializeMarkdown(after, p.baseline, p.fmRaw) === 'The **journal** is a *journal*. journal!\n\n> a journal in a quote\n', 'replaced text keeps its marks', serializeMarkdown(after, p.baseline, p.fmRaw));
 }
 
 console.log(fails ? `\n${fails} FAILED` : '\nall editor tests passed');

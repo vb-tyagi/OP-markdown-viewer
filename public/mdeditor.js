@@ -1,13 +1,13 @@
 // The rich editor: a ProseMirror view over the markdown schema, with keymap, input rules,
 // node views and the commands the toolbar uses. Markdown in, markdown out (see mdcore.js).
 import {
-  EditorState, EditorView, TextSelection, NodeSelection,
+  EditorState, EditorView, TextSelection, NodeSelection, Plugin, PluginKey, Decoration, DecorationSet,
   history, undo, redo, undoDepth, redoDepth, keymap, baseKeymap,
   toggleMark, setBlockType, wrapIn, lift, chainCommands, exitCode,
   inputRules, wrappingInputRule, textblockTypeInputRule, undoInputRule,
   wrapInList, splitListItem, liftListItem, sinkListItem,
 } from './vendor/editor-bundle.js';
-import { schema, md, parseMarkdown, serializeBody, safeHref } from './mdcore.js';
+import { schema, md, parseMarkdown, serializeBody, safeHref, findMatches } from './mdcore.js';
 
 const N = schema.nodes;
 const M = schema.marks;
@@ -113,6 +113,38 @@ const rules = inputRules({
   ],
 });
 
+// ---------- find & replace ----------
+const findKey = new PluginKey('find');
+const findPlugin = new Plugin({
+  key: findKey,
+  state: {
+    init: () => ({ query: '', caseSensitive: false, matches: [], current: -1 }),
+    apply(tr, prev, _old, newState) {
+      const meta = tr.getMeta(findKey);
+      if (!meta && !tr.docChanged) return prev;
+      const next = { ...prev, ...(meta || {}) };
+      if (!next.query) return { query: '', caseSensitive: next.caseSensitive, matches: [], current: -1 };
+      const matches = findMatches(newState.doc, next.query, next.caseSensitive);
+      let current = next.current;
+      if (meta && typeof meta.current === 'number') current = meta.current;
+      else if (tr.docChanged && prev.matches[prev.current]) {
+        const p = tr.mapping.map(prev.matches[prev.current].from);
+        current = matches.findIndex((m) => m.from >= p);
+      }
+      if (!matches.length) current = -1;
+      else if (current < 0 || current >= matches.length) current = 0;
+      return { ...next, matches, current };
+    },
+  },
+  props: {
+    decorations(state) {
+      const s = findKey.getState(state);
+      if (!s || !s.matches.length) return null;
+      return DecorationSet.create(state.doc, s.matches.map((m, i) => Decoration.inline(m.from, m.to, { class: i === s.current ? 'find-match find-current' : 'find-match' })));
+    },
+  },
+});
+
 // ---------- node views ----------
 class ImageView {
   constructor(node) {
@@ -159,6 +191,7 @@ export function createEditor({ mount, sanitize, onChange, onUpdate }) {
 
   const plugins = () => [
     history(),
+    findPlugin,
     rules,
     keymap({
       'Mod-b': toggleMark(M.strong),
@@ -300,6 +333,48 @@ export function createEditor({ mount, sanitize, onChange, onUpdate }) {
     },
     status, focus: () => view.focus(),
     destroy: () => view.destroy(),
+    find: {
+      state() {
+        const s = findKey.getState(view.state);
+        return { query: s.query, count: s.matches.length, current: s.current };
+      },
+      // Set the query; the current match becomes the first one at or after the selection.
+      set(query, caseSensitive = false) {
+        const st = view.state;
+        const probe = findMatches(st.doc, query, caseSensitive);
+        const from = st.selection.from;
+        let current = probe.findIndex((m) => m.from >= from);
+        if (current < 0) current = probe.length ? 0 : -1;
+        view.dispatch(st.tr.setMeta(findKey, { query, caseSensitive, current }));
+        return api.find.state();
+      },
+      step(delta) {
+        const s = findKey.getState(view.state);
+        if (!s.matches.length) return api.find.state();
+        const current = (s.current + delta + s.matches.length) % s.matches.length;
+        const m = s.matches[current];
+        view.dispatch(view.state.tr.setMeta(findKey, { current }).setSelection(TextSelection.create(view.state.doc, m.from, m.to)).scrollIntoView());
+        return api.find.state();
+      },
+      next() { return api.find.step(1); },
+      prev() { return api.find.step(-1); },
+      replace(text) {
+        const s = findKey.getState(view.state);
+        const m = s.matches[s.current];
+        if (!m || locked) return api.find.state();
+        view.dispatch(view.state.tr.insertText(text, m.from, m.to).scrollIntoView());
+        return api.find.state();
+      },
+      replaceAll(text) {
+        const s = findKey.getState(view.state);
+        if (!s.matches.length || locked) return 0;
+        let tr = view.state.tr;
+        for (let i = s.matches.length - 1; i >= 0; i--) tr = tr.insertText(text, s.matches[i].from, s.matches[i].to);
+        view.dispatch(tr.setMeta(findKey, { current: -1 }));
+        return s.matches.length;
+      },
+      close() { view.dispatch(view.state.tr.setMeta(findKey, { query: '', current: -1 })); },
+    },
   };
   return api;
 }

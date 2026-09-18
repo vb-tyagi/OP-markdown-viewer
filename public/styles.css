@@ -63,6 +63,13 @@ main.no-folder #editor { grid-template-rows: 1fr; border-right: 0; overflow-y: a
 .fmt-toolbar .sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
 .fmt-toolbar.locked button:not(#lockEdit):not([data-cmd="undo"]):not([data-cmd="redo"]), .fmt-toolbar.locked select { opacity: .4; pointer-events: none; }
 #lockEdit.on { background: color-mix(in srgb, var(--warn) 18%, var(--panel)); border-color: var(--warn); }
+.findbar { display: flex; gap: 6px; align-items: center; padding: 5px 10px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; font-size: 12.5px; }
+.findbar input[type="search"], .findbar input[type="text"] { font: inherit; font-size: 13px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); min-width: 160px; }
+.findbar #findCount { min-width: 70px; }
+.find-match { background: color-mix(in srgb, var(--warn) 30%, transparent); border-radius: 2px; }
+.find-current { background: color-mix(in srgb, var(--accent) 45%, transparent); outline: 1px solid var(--accent); }
+.filter-row { padding: 0 12px 8px; }
+.filter { width: 100%; font: inherit; font-size: 12.5px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
 .linkbar { display: flex; gap: 10px; align-items: center; padding: 5px 12px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--accent) 6%, var(--panel)); font-size: 12.5px; }
 .linkbar a { color: var(--accent); font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 50%; }
 

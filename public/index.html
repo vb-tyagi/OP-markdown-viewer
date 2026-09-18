@@ -26,6 +26,7 @@
 <main id="main" class="no-folder">
   <aside id="sidebar" hidden>
     <div class="head"><span id="count"></span><span id="doneCount"></span></div>
+    <div class="filter-row"><input id="fileFilter" class="filter" type="search" placeholder="filter files (⌘⇧F)" autocomplete="off" spellcheck="false"></div>
     <ol id="list"></ol>
   </aside>
   <section id="editor">
@@ -64,7 +65,8 @@
       <span class="grow"></span>
       <button id="resetDemo" hidden>reset demo</button>
       <button id="markDone">mark done</button>
-      <button id="check" title="run the formatting guard">check</button>
+      <button id="findOpen" title="find and replace (⌘F)">find</button>
+      <button id="check" title="run the formatting guard and show what will change">check</button>
       <button id="review" title="ask the AI reviewer">AI review</button>
       <button id="revert">revert</button>
       <button id="save" class="primary"><span id="saveLabel">save</span><kbd>⌘S</kbd></button>
@@ -96,6 +98,18 @@
       <button data-cmd="undo" title="undo (⌘Z)">undo</button>
       <button data-cmd="redo" title="redo (⌘⇧Z)">redo</button>
       <button id="lockEdit" title="switch between reading and editing">read only</button>
+    </div>
+    <div class="findbar" id="findBar" hidden>
+      <input id="findInput" type="search" placeholder="find" autocomplete="off" spellcheck="false" aria-label="find">
+      <label class="chk"><input type="checkbox" id="findCase"> match case</label>
+      <span id="findCount" class="small">no matches</span>
+      <button id="findPrev" class="small" title="previous (⇧⏎)">↑</button>
+      <button id="findNext" class="small" title="next (⏎)">↓</button>
+      <input id="replaceInput" type="text" placeholder="replace with" autocomplete="off" spellcheck="false" aria-label="replace with">
+      <button id="replaceOne" class="small">replace</button>
+      <button id="replaceAll" class="small">replace all</button>
+      <span class="grow"></span>
+      <button id="findClose" class="small" title="close (esc)">×</button>
     </div>
     <div class="linkbar" id="linkBar" hidden>
       <span class="small">link</span>

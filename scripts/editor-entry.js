@@ -3,7 +3,7 @@
 // scripts/build-editor.mjs. The bundle is committed; the app has no runtime dependencies.
 export { Schema, Node, Mark, Fragment, Slice, DOMParser, DOMSerializer } from 'prosemirror-model';
 export { EditorState, Plugin, PluginKey, Selection, TextSelection, NodeSelection, AllSelection } from 'prosemirror-state';
-export { EditorView } from 'prosemirror-view';
+export { EditorView, Decoration, DecorationSet } from 'prosemirror-view';
 export {
   baseKeymap, toggleMark, setBlockType, wrapIn, lift, chainCommands, exitCode,
   joinUp, joinDown, selectParentNode, createParagraphNear, liftEmptyBlock, splitBlock, newlineInCode, deleteSelection, joinBackward, selectNodeBackward,
