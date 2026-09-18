@@ -8,11 +8,13 @@ import { diffLines, hunks } from './diff.js';
 const $ = (id) => document.getElementById(id);
 const els = {
   main: $('main'), list: $('list'), panel: $('panel'), status: $('status'), meta: $('meta'), toast: $('toast'),
-  welcome: $('welcome'), toolbar: $('toolbar'), fmtToolbar: $('fmtToolbar'), linkBar: $('linkBar'), linkHref: $('linkHref'),
+  welcome: $('welcome'), toolbar: $('toolbar'), fmtToolbar: $('fmtToolbar'),
   docArea: $('docArea'), fmCard: $('fmCard'), fmEdit: $('fmEdit'), pm: $('pm'), source: $('source'), srcText: $('srcText'),
   folderChip: $('folderChip'), folderName: $('folderName'), count: $('count'), doneCount: $('doneCount'),
   filePicker: $('filePicker'), settings: $('settings'), banner: $('banner'), sidebar: $('sidebar'), blockType: $('blockType'), lockEdit: $('lockEdit'),
   findBar: $('findBar'), findInput: $('findInput'), findCase: $('findCase'), findCount: $('findCount'), replaceInput: $('replaceInput'), fileFilter: $('fileFilter'),
+  popover: $('popover'), popView: $('popView'), popHref: $('popHref'), popLinkForm: $('popLinkForm'), popUrl: $('popUrl'), popText: $('popText'), popTextLabel: $('popTextLabel'),
+  popLinkError: $('popLinkError'), popImageForm: $('popImageForm'), popImgUrl: $('popImgUrl'), popImgAlt: $('popImgAlt'), popImgError: $('popImgError'),
 };
 
 // ---------- persistent settings ----------
@@ -117,7 +119,84 @@ const editor = createEditor({
     if (origin !== 'source') scheduleSourceSync();
   },
   onUpdate: updateToolbar,
+  onLinkRequest: ({ existing, selectedText, coords }) => openPopover('link', { existing, selectedText, coords }),
+  onImageRequest: ({ coords }) => openPopover('image', { coords }),
 });
+
+// ---------- link and image popover ----------
+let popMode = null; // 'view' | 'link' | 'image'
+function placePopover(coords) {
+  const area = els.docArea;
+  const rect = area.getBoundingClientRect();
+  els.popover.hidden = false;
+  const w = els.popover.offsetWidth;
+  let left = coords.left - rect.left + area.scrollLeft;
+  const maxLeft = area.scrollLeft + area.clientWidth - w - 8;
+  left = Math.max(area.scrollLeft + 8, Math.min(left, maxLeft));
+  const top = coords.bottom - rect.top + area.scrollTop + 8;
+  els.popover.style.left = `${Math.round(left)}px`;
+  els.popover.style.top = `${Math.round(top)}px`;
+}
+function openPopover(mode, { existing = null, selectedText = '', coords } = {}) {
+  popMode = mode;
+  els.popView.hidden = mode !== 'view';
+  els.popLinkForm.hidden = mode !== 'link';
+  els.popImageForm.hidden = mode !== 'image';
+  els.popLinkError.hidden = true;
+  els.popImgError.hidden = true;
+  if (mode === 'view') {
+    els.popHref.textContent = existing.href;
+    els.popHref.href = existing.href;
+  } else if (mode === 'link') {
+    els.popUrl.value = existing ? existing.href : '';
+    els.popTextLabel.hidden = !!existing || !!selectedText;
+    els.popText.value = '';
+  } else {
+    els.popImgUrl.value = '';
+    els.popImgAlt.value = '';
+  }
+  placePopover(coords || editor.selectionCoords());
+  if (mode === 'link') { els.popUrl.focus(); els.popUrl.select(); }
+  if (mode === 'image') els.popImgUrl.focus();
+}
+function closePopover(refocus = false) {
+  if (!popMode) return;
+  popMode = null;
+  els.popover.hidden = true;
+  if (refocus) editor.focus();
+}
+els.popLinkForm.onsubmit = (e) => {
+  e.preventDefault();
+  const href = els.popUrl.value.trim();
+  const text = els.popText.value.trim();
+  if (!href) { editor.run('unlink'); closePopover(true); return; }
+  if (!editor.applyLink(href, els.popTextLabel.hidden ? '' : (text || href))) {
+    els.popLinkError.textContent = 'only http, https, mailto and tel links are allowed';
+    els.popLinkError.hidden = false;
+    return;
+  }
+  closePopover(true);
+  updateToolbar(editor.status());
+};
+els.popImageForm.onsubmit = (e) => {
+  e.preventDefault();
+  const src = els.popImgUrl.value.trim();
+  if (!src || !editor.insertImage(src, els.popImgAlt.value.trim())) {
+    els.popImgError.textContent = 'only http, https or relative image URLs are allowed';
+    els.popImgError.hidden = false;
+    return;
+  }
+  closePopover(true);
+};
+$('popLinkCancel').onclick = () => closePopover(true);
+$('popImgCancel').onclick = () => closePopover(true);
+$('popEdit').onmousedown = (e) => e.preventDefault();
+$('popEdit').onclick = () => editor.run('link');
+$('popRemove').onmousedown = (e) => e.preventDefault();
+$('popRemove').onclick = () => { editor.run('unlink'); closePopover(true); };
+for (const inp of [els.popUrl, els.popText, els.popImgUrl, els.popImgAlt]) inp.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closePopover(true); } });
+// Clicking into the document dismisses any popover.
+els.pm.addEventListener('mousedown', () => closePopover(false));
 
 function updateMeta() {
   if (!cur) { els.meta.textContent = ''; return; }
@@ -145,12 +224,11 @@ function updateToolbar(st) {
   els.fmtToolbar.classList.toggle('locked', st.locked);
   els.lockEdit.textContent = st.locked ? 'editing off' : 'read only';
   els.lockEdit.classList.toggle('on', st.locked);
+  if (popMode === 'link' || popMode === 'image') return; // a form is open; leave it alone
   if (st.link && !st.locked) {
-    els.linkBar.hidden = false;
-    els.linkHref.textContent = st.link.href;
-    els.linkHref.href = st.link.href;
-  } else {
-    els.linkBar.hidden = true;
+    if (popMode !== 'view' || els.popHref.href !== st.link.href) openPopover('view', { existing: st.link });
+  } else if (popMode === 'view') {
+    closePopover(false);
   }
 }
 
@@ -705,10 +783,6 @@ for (const b of els.fmtToolbar.querySelectorAll('button[data-cmd]')) {
 }
 els.blockType.onchange = () => { const v = els.blockType.value; if (cur && ['p', 'h1', 'h2', 'h3'].includes(v)) editor.run(v === 'p' ? 'paragraph' : v); };
 els.lockEdit.onclick = () => { lockedByUser = !lockedByUser; editor.setLocked(lockedByUser || (cur && !cur.valid)); toast(lockedByUser ? 'reading mode: editing is off' : 'editing is on'); };
-$('linkEditBtn').onmousedown = (e) => e.preventDefault();
-$('linkEditBtn').onclick = () => editor.run('link');
-$('linkRemoveBtn').onmousedown = (e) => e.preventDefault();
-$('linkRemoveBtn').onclick = () => editor.run('unlink');
 
 $('save').onclick = saveFlow;
 $('check').onclick = runCheck;

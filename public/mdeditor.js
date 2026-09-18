@@ -183,7 +183,7 @@ class OpaqueView {
 }
 
 // ---------- editor ----------
-export function createEditor({ mount, sanitize, onChange, onUpdate }) {
+export function createEditor({ mount, sanitize, onChange, onUpdate, onLinkRequest, onImageRequest }) {
   let locked = false;
   let base = { fmRaw: '', fmInner: null, baseline: null };
   let fmInner = null;
@@ -237,8 +237,19 @@ export function createEditor({ mount, sanitize, onChange, onUpdate }) {
     },
   });
 
+  function selectionCoords(v) {
+    const { from, to } = v.state.selection;
+    const a = v.coordsAtPos(from);
+    const b = v.coordsAtPos(to);
+    return { left: a.left, top: Math.min(a.top, b.top), bottom: Math.max(a.bottom, b.bottom), right: b.right };
+  }
   function promptLink(v) {
     const existing = linkAt(v.state);
+    if (onLinkRequest) {
+      const { from, to } = v.state.selection;
+      onLinkRequest({ existing, selectedText: v.state.doc.textBetween(from, to, ' '), coords: selectionCoords(v) });
+      return true;
+    }
     const href = window.prompt(existing ? 'edit link URL (empty removes the link)' : 'link URL', existing ? existing.href : 'https://');
     if (href === null) return true;
     if (!existing && !href.trim()) return true;
@@ -248,6 +259,7 @@ export function createEditor({ mount, sanitize, onChange, onUpdate }) {
     return true;
   }
   function promptImage(v) {
+    if (onImageRequest) { onImageRequest({ coords: selectionCoords(v) }); return; }
     const src = window.prompt('image URL');
     if (!src) return;
     if (!safeHref(src)) { window.alert('only http, https or relative image URLs are allowed'); return; }
@@ -263,6 +275,24 @@ export function createEditor({ mount, sanitize, onChange, onUpdate }) {
     bullet: toggleList(N.bullet_list), ordered: toggleList(N.ordered_list), quote: toggleQuote, codeblock: toggleCodeBlock,
     hr: insertHr, clear: clearFormatting, undo, redo,
     link: (s, d, v) => promptLink(v), unlink: setLink(''), image: (s, d, v) => { promptImage(v); return true; },
+  };
+  // Used by the app's popover once the user has typed a URL.
+  const direct = {
+    applyLink: (href, text) => {
+      const st = view.state;
+      if (text && st.selection.empty && !linkAt(st)) {
+        const clean = safeHref(href);
+        if (!clean) return false;
+        const from = st.selection.from;
+        view.dispatch(st.tr.insertText(text, from).addMark(from, from + text.length, M.link.create({ href: clean })).scrollIntoView());
+        view.focus();
+        return true;
+      }
+      const ok = setLink(href)(st, view.dispatch);
+      view.focus();
+      return ok;
+    },
+    insertImage: (src, alt) => { const ok = insertImage(src, alt)(view.state, view.dispatch); view.focus(); return ok; },
   };
 
   function status() {
@@ -328,11 +358,15 @@ export function createEditor({ mount, sanitize, onChange, onUpdate }) {
       const c = commands[name];
       if (!c || locked) return false;
       const ok = c(view.state, view.dispatch, view);
-      view.focus();
+      // link and image hand focus to the popover; everything else keeps the caret in the document
+      if (!((name === 'link' && onLinkRequest) || (name === 'image' && onImageRequest))) view.focus();
       return ok;
     },
     status, focus: () => view.focus(),
     destroy: () => view.destroy(),
+    applyLink: direct.applyLink,
+    insertImage: direct.insertImage,
+    selectionCoords: () => selectionCoords(view),
     find: {
       state() {
         const s = findKey.getState(view.state);

@@ -113,13 +113,26 @@
       <span class="grow"></span>
       <button id="findClose" class="small" title="close (esc)">×</button>
     </div>
-    <div class="linkbar" id="linkBar" hidden>
-      <span class="small">link</span>
-      <a id="linkHref" href="#" target="_blank" rel="noopener noreferrer"></a>
-      <button id="linkEditBtn" class="small">edit</button>
-      <button id="linkRemoveBtn" class="small">remove</button>
-    </div>
     <div class="doc-scroll" id="docArea" hidden>
+      <div class="popover" id="popover" hidden>
+        <div class="pop-view" id="popView" hidden>
+          <a id="popHref" href="#" target="_blank" rel="noopener noreferrer"></a>
+          <button id="popEdit" class="small" type="button">edit</button>
+          <button id="popRemove" class="small" type="button">remove</button>
+        </div>
+        <form class="pop-form" id="popLinkForm" hidden>
+          <label>link URL <input id="popUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://…"></label>
+          <label id="popTextLabel" hidden>text <input id="popText" type="text" autocomplete="off" placeholder="link text"></label>
+          <p class="pop-error small" id="popLinkError" hidden></p>
+          <div class="actions"><button type="button" class="small" id="popLinkCancel">cancel</button><button type="submit" class="small primary">apply</button></div>
+        </form>
+        <form class="pop-form" id="popImageForm" hidden>
+          <label>image URL <input id="popImgUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://… or images/photo.png"></label>
+          <label>alt text <input id="popImgAlt" type="text" autocomplete="off" placeholder="describes the image"></label>
+          <p class="pop-error small" id="popImgError" hidden></p>
+          <div class="actions"><button type="button" class="small" id="popImgCancel">cancel</button><button type="submit" class="small primary">insert</button></div>
+        </form>
+      </div>
       <div class="doc">
         <div class="fm-card" id="fmCard" hidden>
           <span class="fm-label">front matter</span>
