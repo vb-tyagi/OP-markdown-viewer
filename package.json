@@ -1,6 +1,6 @@
 {
   "name": "op-markdown-viewer",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "type": "module",
   "description": "Edit markdown files on your own computer, in your browser, with a formatting guard on every save. Static, local-first, no backend.",
@@ -14,9 +14,10 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node test-guard.mjs && node test-editor.mjs && node test-diff.mjs",
+    "test": "node test-guard.mjs && node test-editor.mjs && node test-diff.mjs && node test-server.mjs",
     "verify-vendor": "node scripts/verify-vendor.mjs",
-    "build:editor": "node scripts/build-editor.mjs"
+    "build:editor": "node scripts/build-editor.mjs",
+    "port": "node scripts/free-port.mjs"
   },
   "homepage": "https://op-markdown-viewer.vercel.app",
   "bugs": {

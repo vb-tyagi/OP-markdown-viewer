@@ -250,6 +250,66 @@ export function download(name, text, opts) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
+// ---------- session: files named on the local companion's command line ----------
+// `node server.js --dir <folder>` (or --files) makes the companion serve those files; the page
+// reads and saves them through it, so saving in place works in every browser. Only on localhost.
+function isLocalhost() {
+  const h = typeof location !== 'undefined' ? location.hostname : '';
+  return h === 'localhost' || h === '127.0.0.1';
+}
+export async function probeSession() {
+  if (!isLocalhost()) return null;
+  try {
+    const r = await fetch('./api/session', { cache: 'no-store', credentials: 'omit' });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j && j.ok ? j : null;
+  } catch {
+    return null;
+  }
+}
+class SessionFolder {
+  constructor(info) {
+    this.kind = 'session';
+    this.name = info.label;
+    this.root = info.root;
+    this.canWrite = true;
+    this.canBackup = true;
+    this.serverBackups = true; // the companion writes the backup as part of the save
+  }
+  async list() {
+    const r = await fetch('./api/session', { cache: 'no-store', credentials: 'omit' });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || 'the local companion is not serving a session');
+    return j.files.map((f) => ({ name: f.name, size: f.size, lastModified: f.mtimeMs }));
+  }
+  async read(name) {
+    const r = await fetch(`./api/session/file?name=${encodeURIComponent(name)}`, { cache: 'no-store', credentials: 'omit' });
+    if (!r.ok) throw new Error(`could not read ${name} (${r.status})`);
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    return { ...decodeBytes(bytes), lastModified: Number(r.headers.get('X-Mtime-Ms')), size: bytes.length };
+  }
+  async stat(name) {
+    const f = (await this.list()).find((x) => x.name === name);
+    if (!f) throw new Error('the file is no longer there');
+    return { lastModified: f.lastModified, size: f.size };
+  }
+  async write(name, text, opts = {}) {
+    const bytes = encodeText(text, opts);
+    const q = new URLSearchParams({ name, mtime: opts.expectMtime != null ? String(opts.expectMtime) : '', force: opts.force ? '1' : '0', backup: opts.backup === false ? '0' : '1' });
+    const r = await fetch(`./api/session/file?${q}`, { method: 'PUT', credentials: 'omit', headers: { 'content-type': 'application/octet-stream' }, body: bytes });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 409) throw Object.assign(new Error('the file changed on disk since you opened it'), { conflict: true });
+    if (!r.ok || !j.ok) throw new Error(j.error || `save failed (${r.status})`);
+    return { lastModified: j.mtimeMs, bytes: j.bytes, backup: j.backup || null };
+  }
+  async backup() { return null; }
+  async listBackups() { return []; }
+}
+export function openSession(info) {
+  return new SessionFolder(info);
+}
+
 // ---------- real folders (File System Access API) ----------
 export function supportsDirectoryPicker() {
   return typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function';

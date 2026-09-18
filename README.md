@@ -103,7 +103,27 @@ cd OP-markdown-viewer
 npm start
 ```
 
-Then open http://127.0.0.1:4545. Nothing to install for running it; Node 18 or newer.
+Nothing to install for running it; Node 18 or newer. The server prints the URL it is listening on.
+
+**Ports never clash.** `npm start` picks the first port from 4545 upward that nothing on your machine is listening on, checking both the list of listening sockets and an actual bind. Ask for a port with `PORT=4600 npm start`; if it is busy the next free one is used and the log says so (`STRICT_PORT=1` makes that an error instead). `npm run port` prints a free port on its own, for scripts and other tools.
+
+**Load files from the terminal.** Point the companion at your files and the page opens them straight away, and saves go back to disk through the companion, so in-place saving works in every browser, Safari and Firefox included:
+
+```bash
+npm start -- --dir ~/essays            # every .md and .markdown in that folder
+npm start -- --files a.md notes/b.md   # specific files
+npm start -- --dir ~/essays --open     # and open the browser
+```
+
+The companion serves only the files named on its command line, checks that the file has not changed since you opened it before overwriting, writes through a temporary file, verifies the result byte for byte, and keeps the previous version in `.op-markdown-viewer-backups/` next to the file.
+
+### From Claude Code: `/vbt-review-markdown`
+
+`skills/vbt-review-markdown/SKILL.md` is a Claude Code skill that does the above for you: it asks which folder or files to review (or lets you drop them in yourself), runs the free-port check, starts the companion with your files, and opens the browser. Install it by linking or copying the folder into your skills directory:
+
+```bash
+ln -s "$(pwd)/skills/vbt-review-markdown" ~/.claude/skills/vbt-review-markdown
+```
 
 The editor engine (ProseMirror and markdown-it) ships as one committed file, `public/vendor/editor-bundle.js`, built from the pinned `devDependencies` by `npm run build:editor`. You only need `npm ci` if you want to rebuild that bundle or run the test suite.
 
@@ -134,9 +154,10 @@ public/            the app (deploy this folder)
   review-core.js   reviewer prompt and reply parser, shared with the server
   samples/         sample essays for the demo
   vendor/          DOMPurify and the built editor bundle, pinned by hash
-server.js          optional local companion (static files + CLI reviewer)
-test-guard.mjs     guard tests, test-editor.mjs editor fidelity tests (npm test)
-scripts/           editor bundle build, vendor hash verification
+server.js          optional local companion (static files, --dir/--files sessions, CLI reviewer)
+skills/            the /vbt-review-markdown Claude Code skill
+test-*.mjs         guard, editor fidelity, diff and server tests (npm test)
+scripts/           editor bundle build, vendor hash verification, free-port picker
 ```
 
 ## License

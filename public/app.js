@@ -48,6 +48,7 @@ let samples = null;
 let reviewAbort = null;
 let saving = false;
 let lockedByUser = false;
+let sessionInfo = null; // files served by the local companion, if it was started with --dir or --files
 let syncTimer = null;
 let srcTimer = null;
 
@@ -83,6 +84,7 @@ function folderBanner() {
       : 'files mode: saving downloads the edited copy. your originals stay untouched.';
   }
   if (folder.kind === 'sandbox') return 'demo sandbox: these sample files live inside your browser, not on your disk. everything else works exactly like direct folder saving.';
+  if (folder.kind === 'session') return `opened from your terminal: ${folder.root}. saves write straight back to these files, with a backup copy first.`;
   return '';
 }
 function applyAiVisibility() {
@@ -357,7 +359,7 @@ async function mountFolder(f) {
   els.sidebar.hidden = false;
   els.folderChip.hidden = false;
   $('toggleFiles').hidden = !window.matchMedia('(max-width: 900px)').matches;
-  els.folderName.textContent = folder.kind === 'sandbox' ? 'demo sandbox' : folder.kind === 'files' ? `${files.length} file${files.length === 1 ? '' : 's'} (copies)` : `${folder.name} (direct)`;
+  els.folderName.textContent = folder.kind === 'sandbox' ? 'demo sandbox' : folder.kind === 'files' ? `${files.length} file${files.length === 1 ? '' : 's'} (copies)` : folder.kind === 'session' ? `${folder.name} (terminal)` : `${folder.name} (direct)`;
   $('saveLabel').textContent = folder.canWrite ? 'save' : 'save a copy';
   $('toggleSource').hidden = false;
   applyAiVisibility();
@@ -613,7 +615,7 @@ async function doSave(force = false) {
       }
     }
     let backupLabel = null;
-    if (settings.backups && folder.canBackup) {
+    if (settings.backups && folder.canBackup && !folder.serverBackups) {
       try {
         backupLabel = await folder.backup(cur.name, cur.text, opts);
       } catch (e) {
@@ -622,13 +624,20 @@ async function doSave(force = false) {
         saving = true; $('save').disabled = true;
       }
     }
-    const r = await folder.write(cur.name, text, opts);
+    const r = await folder.write(cur.name, text, { ...opts, backup: settings.backups, expectMtime: cur.lastModified, force });
     cur.text = text;
     cur.lastModified = r.lastModified;
     editor.rebase(text);
+    backupLabel = backupLabel || r.backup || null;
     finishSave(`saved ${r.bytes} bytes${backupLabel ? ' · backup kept' : ''}`);
     toast('saved to disk ✓');
   } catch (e) {
+    if (e && e.conflict) {
+      saving = false; $('save').disabled = false;
+      if (confirm('this file changed on disk since you opened it (another program saved it). overwrite the disk version with yours?')) return doSave(true);
+      setStatus('save cancelled');
+      return;
+    }
     setStatus('save FAILED');
     alert('save failed: ' + e.message);
   } finally {
@@ -647,7 +656,7 @@ const S = Object.fromEntries(["sAiEnabled", "sAiFields", "sBackupDir", "sBackups
 function openSettings(focusAi = false) {
   S.sAiEnabled.checked = focusAi ? true : settings.ai;
   S.sAiFields.hidden = !S.sAiEnabled.checked;
-  S.sMode.textContent = !folder ? 'no files open yet.' : folder.kind === 'files' ? 'current mode: files. saving writes a copy where you choose; originals are untouched.' : folder.kind === 'sandbox' ? 'current mode: demo sandbox (behaves like direct saving).' : `current mode: direct saving into “${folder.name}”.`;
+  S.sMode.textContent = !folder ? 'no files open yet.' : folder.kind === 'files' ? 'current mode: files. saving writes a copy where you choose; originals are untouched.' : folder.kind === 'sandbox' ? 'current mode: demo sandbox (behaves like direct saving).' : folder.kind === 'session' ? `current mode: files opened from your terminal (${folder.root}); saves write in place through the local companion.` : `current mode: direct saving into “${folder.name}”.`;
   S.sProvider.value = settings.provider;
   S.sProviderCli.hidden = !cliInfo;
   S.sProviderCli.disabled = !cliInfo;
@@ -712,6 +721,9 @@ async function showWelcome() {
   $('backupDirName').textContent = BACKUP_DIR_NAME;
   $('enableAi').textContent = settings.ai ? 'AI reviewer: on (settings)' : 'turn on the AI reviewer';
   $('saveCopyHow').textContent = FS.supportsSavePicker() ? 'a save dialog lets you choose where each copy goes.' : 'each copy is downloaded.';
+  const os = $('openSession');
+  os.hidden = !sessionInfo;
+  if (sessionInfo) os.textContent = `open ${sessionInfo.label} from your terminal (${sessionInfo.files.length} file${sessionInfo.files.length === 1 ? '' : 's'})`;
 }
 async function tryOpen(fn, label) {
   setStatus(label);
@@ -734,6 +746,7 @@ $('repoLink').href = REPO_URL;
 $('aiOnSave').checked = settings.reviewOnSave;
 
 $('openFolder').onclick = () => tryOpen(FS.openFolder, 'choose a folder…');
+$('openSession').onclick = () => { if (sessionInfo) tryOpen(async () => FS.openSession(sessionInfo), 'opening your files…'); };
 $('reopenFolder').onclick = () => tryOpen(FS.reopenLastFolder, 'reopening…');
 $('tryDemo').onclick = () => tryOpen(async () => FS.openSandbox(await loadSamples()), 'loading the demo…');
 $('resetDemo').onclick = () => { if (confirm('reset the demo sandbox to the original sample files?')) tryOpen(async () => FS.resetSandbox(await loadSamples()), 'resetting…'); };
@@ -828,7 +841,10 @@ window.addEventListener('beforeunload', (e) => { if (isDirty()) { e.preventDefau
 // ---------- boot ----------
 (async () => {
   applyAiVisibility();
+  sessionInfo = await FS.probeSession();
   await showWelcome();
   cliInfo = await probeCli();
   setStatus('ready');
+  // Files handed over by the terminal (or the /vbt-review-markdown skill) open straight away.
+  if (sessionInfo && !folder) await tryOpen(async () => FS.openSession(sessionInfo), 'opening your files…');
 })();
