@@ -6,9 +6,10 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.anthropic.com; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'self'">
 <meta name="referrer" content="no-referrer">
 <meta name="color-scheme" content="light dark">
-<meta name="description" content="Edit markdown files on your own computer, in your browser. Every save goes through a formatting guard. Nothing is uploaded.">
+<meta name="description" content="Edit markdown files in your browser, in a readable view with formatting tools. Every save goes through a formatting guard. Nothing is uploaded.">
 <title>OP-markdown-viewer</title>
 <link rel="icon" href="data:,">
+<link rel="stylesheet" href="./vendor/prosemirror.css">
 <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
@@ -17,7 +18,7 @@
   <span class="chip" id="folderChip" hidden><span id="folderName"></span><button id="changeFolder" class="link">change</button></span>
   <span class="grow"></span>
   <label class="chk" id="aiOnSaveLabel" hidden><input type="checkbox" id="aiOnSave"> AI review before save</label>
-  <button id="togglePreview" hidden>preview</button>
+  <button id="toggleSource" hidden title="show or hide the markdown source (⌘/)">markdown</button>
   <button id="openSettings">settings</button>
   <span class="status" id="status">loading…</span>
 </header>
@@ -35,7 +36,7 @@
         <label id="openFiles" class="btn primary big" for="filePicker">open files</label>
         <button id="tryDemo" class="big">try the demo</button>
       </div>
-      <p class="small">or drop .md files anywhere on this screen. <span id="saveCopyHow"></span> a formatting guard checks every save for accidental damage, entirely inside your browser.</p>
+      <p class="small">or drop .md files anywhere on this screen. you edit the readable document itself, with formatting buttons and shortcuts; the markdown source stays one click away. <span id="saveCopyHow"></span> a formatting guard checks every save for accidental damage, entirely inside your browser.</p>
       <div class="optional">
         <h2>optional, only if you want them</h2>
         <div class="opt-row">
@@ -68,10 +69,55 @@
       <button id="revert">revert</button>
       <button id="save" class="primary"><span id="saveLabel">save</span><kbd>⌘S</kbd></button>
     </div>
-    <textarea id="ta" spellcheck="true" hidden></textarea>
+    <div class="fmt-toolbar" id="fmtToolbar" hidden>
+      <select id="blockType" aria-label="paragraph style" title="paragraph style (⌘⌥0 to ⌘⌥3)">
+        <option value="p">paragraph</option>
+        <option value="h1">heading 1</option>
+        <option value="h2">heading 2</option>
+        <option value="h3">heading 3</option>
+        <option value="other" hidden>…</option>
+      </select>
+      <span class="sep"></span>
+      <button data-cmd="strong" title="bold (⌘B)"><b>B</b></button>
+      <button data-cmd="em" title="italic (⌘I)"><i>I</i></button>
+      <button data-cmd="strike" title="strikethrough (⌘⇧S)"><s>S</s></button>
+      <button data-cmd="code" title="inline code (⌘E)"><code>&lt;/&gt;</code></button>
+      <button data-cmd="link" title="link (⌘K)">link</button>
+      <span class="sep"></span>
+      <button data-cmd="bullet" title="bulleted list (⌘⇧8)">• list</button>
+      <button data-cmd="ordered" title="numbered list (⌘⇧7)">1. list</button>
+      <button data-cmd="quote" title="quote (⌘⇧9)">“ quote</button>
+      <button data-cmd="codeblock" title="code block (⌘⌥C)">{ } block</button>
+      <button data-cmd="hr" title="divider">— divider</button>
+      <button data-cmd="image" title="image by URL">image</button>
+      <span class="sep"></span>
+      <button data-cmd="clear" title="clear formatting">clear</button>
+      <span class="grow"></span>
+      <button data-cmd="undo" title="undo (⌘Z)">undo</button>
+      <button data-cmd="redo" title="redo (⌘⇧Z)">redo</button>
+      <button id="lockEdit" title="switch between reading and editing">read only</button>
+    </div>
+    <div class="linkbar" id="linkBar" hidden>
+      <span class="small">link</span>
+      <a id="linkHref" href="#" target="_blank" rel="noopener noreferrer"></a>
+      <button id="linkEditBtn" class="small">edit</button>
+      <button id="linkRemoveBtn" class="small">remove</button>
+    </div>
+    <div class="doc-scroll" id="docArea" hidden>
+      <div class="doc">
+        <div class="fm-card" id="fmCard" hidden>
+          <span class="fm-label">front matter</span>
+          <textarea id="fmEdit" spellcheck="false" rows="3"></textarea>
+        </div>
+        <div id="pm"></div>
+      </div>
+    </div>
     <div id="panel"></div>
   </section>
-  <section id="preview" hidden><div id="fm" class="fm" hidden></div><article id="article"></article></section>
+  <section id="source" hidden>
+    <div class="src-head"><span>markdown source</span><span class="small">edits here update the document, and vice versa</span></div>
+    <textarea id="srcText" spellcheck="false"></textarea>
+  </section>
 </main>
 
 <dialog id="settings">
@@ -131,7 +177,6 @@
 
 <div class="toast" id="toast"></div>
 <input type="file" id="filePicker" multiple accept=".md,.markdown,text/markdown" hidden>
-<script src="./vendor/marked.umd.js" integrity="sha384-Jy8qDMspJASzATgFngF2ompIKy0StbCcvuTE65mxDm/E0/YSIF6Ndc+5V7bbwRcw"></script>
 <script src="./vendor/purify.min.js" integrity="sha384-uUMu9JDY09vBzRf9SPcK2VgUj+W/70J6Soc+Dded5P474ElQ63iv9j5N3DE7Kp3N"></script>
 <script type="module" src="./app.js"></script>
 </body>

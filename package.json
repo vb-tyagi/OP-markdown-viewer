@@ -1,6 +1,6 @@
 {
   "name": "op-markdown-viewer",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "Edit markdown files on your own computer, in your browser, with a formatting guard on every save. Static, local-first, no backend.",
@@ -14,11 +14,26 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node test-guard.mjs",
-    "verify-vendor": "node scripts/verify-vendor.mjs"
+    "test": "node test-guard.mjs && node test-editor.mjs",
+    "verify-vendor": "node scripts/verify-vendor.mjs",
+    "build:editor": "node scripts/build-editor.mjs"
   },
   "homepage": "https://op-markdown-viewer.vercel.app",
   "bugs": {
     "url": "https://github.com/vb-tyagi/OP-markdown-viewer/issues"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "markdown-it": "15.0.2",
+    "prosemirror-commands": "1.7.2",
+    "prosemirror-history": "1.5.0",
+    "prosemirror-inputrules": "1.5.1",
+    "prosemirror-keymap": "1.2.3",
+    "prosemirror-markdown": "1.13.7",
+    "prosemirror-model": "1.25.11",
+    "prosemirror-schema-list": "1.5.1",
+    "prosemirror-state": "1.4.4",
+    "prosemirror-transform": "1.12.1",
+    "prosemirror-view": "1.42.4"
   }
 }

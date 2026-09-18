@@ -20,12 +20,12 @@ The Content Security Policy (`connect-src 'self' https://api.anthropic.com`) mak
 ## Hardening in place
 
 - Strict CSP: no inline scripts or styles, no third-party scripts, no frames, no workers, no remote images. Vendored scripts carry Subresource Integrity hashes.
-- Markdown preview is sanitized with DOMPurify before it touches the DOM, with `id`, `name`, `class` and `style` attributes stripped, so a hostile `.md` file cannot run script, read the stored key, clobber the app's own element lookups, or impersonate its buttons and panels.
+- The document is rendered by the editor from a fixed schema (text, headings, lists, links, images, code), never from the file's HTML. Raw HTML blocks and tables are shown through DOMPurify with `id`, `name`, `class` and `style` attributes stripped, pasted HTML goes through the same sanitizer before the editor parses it, and link and image URLs are limited to http, https, mailto, tel and relative paths. A hostile `.md` file therefore cannot run script, read the stored key, clobber the app's own element lookups, or impersonate its buttons and panels.
 - Both optional features are off by default and explained in the app with an (i) button before you turn them on.
 - In direct mode the page only ever opens existing `.md` and `.markdown` files at the top level of the folder you choose and never creates new files outside its backup folder.
 - Writes are atomic (`createWritable` swap file) and verified byte for byte after writing. A backup of the previous version is written first.
-- Vendored libraries (`marked`, `DOMPurify`) are copied from the npm registry tarballs and pinned by SHA-256 in `public/vendor/HASHES.txt`; `npm run verify-vendor` checks them.
-- No dependencies, no build step, no lockfile to poison.
+- Vendored files are pinned by SHA-256 in `public/vendor/HASHES.txt` (`npm run verify-vendor`). DOMPurify is copied unmodified from its npm tarball. The editor bundle (ProseMirror, markdown-it) is built by `scripts/build-editor.mjs` from exact-pinned `devDependencies` with a committed lockfile, and CI rebuilds it on every push and fails if the committed file differs.
+- No runtime dependencies and no build step to serve the app; the dev dependencies exist only to rebuild that one bundle and to run the tests.
 - GitHub Actions in this repository are pinned to commit SHAs.
 
 ## The local companion (`npm start`)

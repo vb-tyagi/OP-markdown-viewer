@@ -1,4 +1,5 @@
-# Tests and vendor hash verification on every push and pull request. No dependencies are installed.
+# Tests, vendor hash verification, and a reproducibility check of the committed editor bundle,
+# on every push and pull request.
 name: ci
 on:
   push:
@@ -11,5 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: 22
+      - run: npm ci --no-audit --no-fund
       - run: npm test
       - run: npm run verify-vendor
+      - name: the committed editor bundle must be reproducible from the pinned packages
+        run: npm run build:editor && git diff --exit-code -- public/vendor/

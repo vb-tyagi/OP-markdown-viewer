@@ -2,13 +2,15 @@ import { APP_NAME, APP_SLUG, APP_VERSION, REPO_URL, BACKUP_DIR_NAME } from './co
 import { guard, applyFixes } from './guard.js';
 import * as FS from './fs.js';
 import { MODELS, DEFAULT_MODEL, looksLikeKey, reviewWithAnthropic, probeCli, reviewWithCli } from './review.js';
+import { createEditor } from './mdeditor.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
-  main: $('main'), list: $('list'), ta: $('ta'), panel: $('panel'), status: $('status'), meta: $('meta'), toast: $('toast'),
-  welcome: $('welcome'), toolbar: $('toolbar'), preview: $('preview'), fm: $('fm'), article: $('article'),
+  main: $('main'), list: $('list'), panel: $('panel'), status: $('status'), meta: $('meta'), toast: $('toast'),
+  welcome: $('welcome'), toolbar: $('toolbar'), fmtToolbar: $('fmtToolbar'), linkBar: $('linkBar'), linkHref: $('linkHref'),
+  docArea: $('docArea'), fmCard: $('fmCard'), fmEdit: $('fmEdit'), pm: $('pm'), source: $('source'), srcText: $('srcText'),
   folderChip: $('folderChip'), folderName: $('folderName'), count: $('count'), doneCount: $('doneCount'),
-  filePicker: $('filePicker'), settings: $('settings'), banner: $('banner'), sidebar: $('sidebar'),
+  filePicker: $('filePicker'), settings: $('settings'), banner: $('banner'), sidebar: $('sidebar'), blockType: $('blockType'), lockEdit: $('lockEdit'),
 };
 
 // ---------- persistent settings ----------
@@ -17,7 +19,7 @@ const KEY_NAME = `${APP_SLUG}.anthropic-key`;
 const DONE_KEY = `${APP_SLUG}.done`;
 // Both optional features are off until the user opts in: direct folder saving is chosen per session on the
 // start screen, and the AI reviewer is a setting (`ai`) that defaults to false.
-const DEFAULTS = { ai: false, provider: 'auto', model: DEFAULT_MODEL, styleNotes: '', backups: true, reviewOnSave: false, preview: true };
+const DEFAULTS = { ai: false, provider: 'auto', model: DEFAULT_MODEL, styleNotes: '', backups: true, reviewOnSave: false, source: false };
 let settings = { ...DEFAULTS, ...loadJSON(SETTINGS_KEY, {}) };
 
 function loadJSON(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } }
@@ -41,6 +43,9 @@ let done = loadJSON(DONE_KEY, {});
 let samples = null;
 let reviewAbort = null;
 let saving = false;
+let lockedByUser = false;
+let syncTimer = null;
+let srcTimer = null;
 
 // ---------- small helpers ----------
 function toast(msg, ms = 2200) {
@@ -50,7 +55,8 @@ function toast(msg, ms = 2200) {
   els.toast._t = setTimeout(() => els.toast.classList.remove('show'), ms);
 }
 function setStatus(s) { els.status.textContent = s; }
-function isDirty() { return !!cur && els.ta.value !== cur.text; }
+function currentMarkdown() { return editor.getMarkdown(); }
+function isDirty() { return !!cur && currentMarkdown() !== cur.text; }
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 function doneKey(name) { return `${folder ? folder.name : ''}/${name}`; }
 function stripFrontMatter(t) { return t.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, ''); }
@@ -80,7 +86,7 @@ function applyAiVisibility() {
   $('aiOnSaveLabel').hidden = !settings.ai || !folder;
 }
 
-// ---------- preview ----------
+// ---------- sanitizer (shared by the editor for pasted HTML and passthrough blocks) ----------
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A') {
     node.setAttribute('target', '_blank');
@@ -94,28 +100,86 @@ const PURIFY_CFG = {
   FORBID_ATTR: ['style', 'id', 'name', 'class'],
   ALLOW_DATA_ATTR: false,
 };
+const sanitize = (html) => DOMPurify.sanitize(html, PURIFY_CFG);
 const inPanel = (id) => els.panel.querySelector('#' + id);
-let renderTimer;
-function render() {
-  const raw = els.ta.value;
-  const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
-  if (m) { els.fm.hidden = false; els.fm.textContent = m[1]; } else { els.fm.hidden = true; }
-  const body = m ? raw.slice(m[0].length) : raw;
-  let html = '';
-  try { html = marked.parse(body, { gfm: true, breaks: false }); } catch { html = `<pre>${esc(body)}</pre>`; }
-  els.article.innerHTML = DOMPurify.sanitize(html, PURIFY_CFG);
-}
-function applyPreview() {
-  els.main.classList.toggle('no-preview', !settings.preview);
-  els.preview.hidden = !settings.preview || !folder;
-}
+
+// ---------- the editor ----------
+const editor = createEditor({
+  mount: els.pm,
+  sanitize,
+  onChange: ({ origin }) => {
+    updateMeta();
+    refreshActive();
+    if (els.panel.classList.contains('show') && !reviewAbort) hidePanel();
+    if (origin !== 'source') scheduleSourceSync();
+  },
+  onUpdate: updateToolbar,
+});
+
 function updateMeta() {
   if (!cur) { els.meta.textContent = ''; return; }
-  const bits = [cur.name, `${wordCount(els.ta.value)} words`];
+  const bits = [cur.name, `${wordCount(currentMarkdown())} words`];
   if (isDirty()) bits.push('unsaved');
   if (!cur.valid) bits.push('read-only: not valid UTF-8');
   els.meta.textContent = bits.join(' · ');
 }
+function refreshFmCard() {
+  const inner = editor.frontMatter();
+  els.fmCard.hidden = inner == null;
+  if (inner != null && els.fmEdit.value !== inner) els.fmEdit.value = inner;
+  els.fmEdit.rows = Math.min(14, Math.max(2, (els.fmEdit.value.match(/\n/g) || []).length + 1));
+}
+function updateToolbar(st) {
+  for (const b of els.fmtToolbar.querySelectorAll('button[data-cmd]')) {
+    const c = b.dataset.cmd;
+    const active = c === 'strong' ? st.strong : c === 'em' ? st.em : c === 'strike' ? st.strike : c === 'code' ? st.code
+      : c === 'bullet' ? st.list === 'bullet' : c === 'ordered' ? st.list === 'ordered' : c === 'quote' ? st.quote : c === 'codeblock' ? st.block === 'code' : false;
+    b.classList.toggle('active', !!active);
+    if (c === 'undo') b.disabled = !st.canUndo;
+    if (c === 'redo') b.disabled = !st.canRedo;
+  }
+  els.blockType.value = ['p', 'h1', 'h2', 'h3'].includes(st.block) ? st.block : 'other';
+  els.fmtToolbar.classList.toggle('locked', st.locked);
+  els.lockEdit.textContent = st.locked ? 'editing off' : 'read only';
+  els.lockEdit.classList.toggle('on', st.locked);
+  if (st.link && !st.locked) {
+    els.linkBar.hidden = false;
+    els.linkHref.textContent = st.link.href;
+    els.linkHref.href = st.link.href;
+  } else {
+    els.linkBar.hidden = true;
+  }
+}
+
+// ---------- markdown source pane (two-way) ----------
+function applySource() {
+  const show = settings.source && !!folder;
+  els.main.classList.toggle('with-source', show);
+  els.source.hidden = !show;
+  if (show) syncSourceFromEditor(true);
+}
+function scheduleSourceSync() {
+  if (!settings.source || !folder) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => syncSourceFromEditor(false), 150);
+}
+function syncSourceFromEditor(force) {
+  if (!force && document.activeElement === els.srcText) return;
+  const t = currentMarkdown();
+  if (els.srcText.value !== t) els.srcText.value = t;
+}
+els.srcText.addEventListener('input', () => {
+  clearTimeout(srcTimer);
+  srcTimer = setTimeout(() => {
+    if (!cur) return;
+    editor.setMarkdown(els.srcText.value, { fresh: false, origin: 'source' });
+    refreshFmCard();
+  }, 250);
+});
+els.fmEdit.addEventListener('input', () => {
+  editor.setFrontMatter(els.fmEdit.value);
+  els.fmEdit.rows = Math.min(14, Math.max(2, (els.fmEdit.value.match(/\n/g) || []).length + 1));
+});
 
 // ---------- sidebar ----------
 function renderList() {
@@ -148,7 +212,6 @@ function refreshActive() {
 async function mountFolder(f) {
   folder = f;
   cur = null;
-  els.ta.value = '';
   hidePanel();
   const listed = await folder.list();
   files = [];
@@ -161,15 +224,16 @@ async function mountFolder(f) {
   els.main.classList.remove('no-folder');
   els.welcome.hidden = true;
   els.toolbar.hidden = false;
-  els.ta.hidden = false;
+  els.fmtToolbar.hidden = false;
+  els.docArea.hidden = false;
   els.sidebar.hidden = false;
   els.folderChip.hidden = false;
   els.folderName.textContent = folder.kind === 'sandbox' ? 'demo sandbox' : folder.kind === 'files' ? `${files.length} file${files.length === 1 ? '' : 's'} (copies)` : `${folder.name} (direct)`;
   $('saveLabel').textContent = folder.canWrite ? 'save' : 'save a copy';
-  $('togglePreview').hidden = false;
+  $('toggleSource').hidden = false;
   applyAiVisibility();
   $('resetDemo').hidden = folder.kind !== 'sandbox';
-  applyPreview();
+  applySource();
   showBanner(folderBanner());
   renderList();
   if (!files.length) { setStatus('no markdown files found'); showBanner('no .md files were found. in files mode, pick one or more .md files; in direct mode, the folder must contain .md files at its top level.'); return; }
@@ -187,11 +251,12 @@ async function open(name) {
   let r;
   try { r = await folder.read(name); } catch (e) { alert('could not read the file: ' + e.message); return; }
   cur = { name, text: r.text, bom: r.bom, eol: r.eol, mixed: r.mixed, valid: r.valid, lastModified: r.lastModified };
-  els.ta.value = r.text;
-  els.ta.readOnly = !r.valid;
-  els.ta.scrollTop = 0;
+  editor.setMarkdown(r.text, { fresh: true });
+  editor.setLocked(lockedByUser || !r.valid);
+  refreshFmCard();
+  els.srcText.value = r.text;
+  els.docArea.scrollTop = 0;
   hidePanel();
-  render();
   renderList();
   updateMeta();
   history.replaceState(null, '', '#' + encodeURIComponent(name));
@@ -241,14 +306,14 @@ function showGuard(g, { forSave = false, ai = null } = {}) {
   els.panel.classList.add('show');
   const af = inPanel('applyFixes');
   if (af) af.onclick = () => {
-    els.ta.value = applyFixes(els.ta.value, g.fixes);
-    render(); updateMeta(); refreshActive(); toast('fixes applied');
+    editor.setMarkdown(applyFixes(currentMarkdown(), g.fixes), { fresh: false, origin: 'fix' });
+    refreshFmCard(); updateMeta(); refreshActive(); toast('fixes applied');
     forSave ? saveFlow() : runCheck();
   };
   const cs = inPanel('confirmSave');
   if (cs) cs.onclick = () => {
-    // F6: the text may have changed since the verdict was shown; never save on a stale verdict.
-    const now = guard(cur.text, els.ta.value);
+    // The text may have changed since the verdict was shown; never save on a stale verdict.
+    const now = guard(cur.text, currentMarkdown());
     if (JSON.stringify(now.issues) !== JSON.stringify(g.issues)) {
       showGuard(now, { forSave: true });
       toast('the text changed, so it was checked again');
@@ -263,7 +328,7 @@ function setAiSection(ai) { const sec = inPanel('aiSection'); if (sec) { sec.inn
 
 function runCheck() {
   if (!cur) return null;
-  const g = guard(cur.text, els.ta.value);
+  const g = guard(cur.text, currentMarkdown());
   showGuard(g);
   setStatus('checked');
   return g;
@@ -281,7 +346,7 @@ function resolveProvider() {
 }
 
 function reviewEstimate(provider) {
-  const chars = cur.text.length + els.ta.value.length;
+  const chars = cur.text.length + currentMarkdown().length;
   const kb = (chars / 1024).toFixed(0);
   if (provider !== 'anthropic') return `${kb} KB via local CLI`;
   const m = MODELS.find((x) => x.id === settings.model) || MODELS[0];
@@ -296,7 +361,7 @@ async function runReviewInto(g, forSave) {
   if (!provider) { setStatus('no reviewer configured'); return null; }
   setStatus('AI reviewing…');
   reviewAbort = new AbortController();
-  const args = { name: cur.name, original: cur.text, edited: els.ta.value, styleNotes: settings.styleNotes, signal: reviewAbort.signal };
+  const args = { name: cur.name, original: cur.text, edited: currentMarkdown(), styleNotes: settings.styleNotes, signal: reviewAbort.signal };
   let ai;
   try {
     const r = provider === 'cli' ? await reviewWithCli(args) : await reviewWithAnthropic({ ...args, apiKey: getKey(), model: settings.model });
@@ -315,7 +380,7 @@ async function saveFlow() {
   if (!cur || saving) return;
   if (!isDirty()) { toast('no changes'); return; }
   if (!cur.valid) { alert('this file is not valid UTF-8 and was opened read-only.'); return; }
-  const g = guard(cur.text, els.ta.value);
+  const g = guard(cur.text, currentMarkdown());
   if (settings.ai && settings.reviewOnSave) { await runReviewInto(g, true); return; } // the user confirms in the panel
   if (g.verdict === 'clean') return doSave();
   showGuard(g, { forSave: true });
@@ -327,7 +392,7 @@ async function doSave(force = false) {
   saving = true;
   $('save').disabled = true;
   setStatus('saving…');
-  const text = els.ta.value;
+  const text = currentMarkdown();
   const opts = { bom: cur.bom, eol: cur.eol };
   try {
     if (!folder.canWrite) {
@@ -340,6 +405,7 @@ async function doSave(force = false) {
         throw e;
       }
       cur.text = text;
+      editor.rebase(text);
       finishSave(r.method === 'save-as' ? `saved a copy as ${r.name} (${r.bytes} bytes)` : `downloaded ${r.name} (${r.bytes} bytes)`);
       toast(r.method === 'save-as' ? 'copy saved ✓' : 'downloaded ✓');
       return;
@@ -367,6 +433,7 @@ async function doSave(force = false) {
     const r = await folder.write(cur.name, text, opts);
     cur.text = text;
     cur.lastModified = r.lastModified;
+    editor.rebase(text);
     finishSave(`saved ${r.bytes} bytes${backupLabel ? ' · backup kept' : ''}`);
     toast('saved to disk ✓');
   } catch (e) {
@@ -380,7 +447,7 @@ async function doSave(force = false) {
 function finishSave(status) {
   const f = files.find((x) => x.name === cur.name);
   if (f) { f.words = wordCount(cur.text); f.title = titleFrom(cur.text, cur.name); }
-  hidePanel(); renderList(); updateMeta(); setStatus(status);
+  hidePanel(); renderList(); updateMeta(); refreshFmCard(); syncSourceFromEditor(true); setStatus(status);
 }
 
 // ---------- settings dialog ----------
@@ -499,20 +566,32 @@ $('changeFolder').onclick = () => {
   if (isDirty() && !confirm('you have unsaved changes. discard them?')) return;
   if (reviewAbort) reviewAbort.abort();
   folder = null; cur = null; files = [];
-  els.ta.value = ''; els.article.innerHTML = ''; els.fm.hidden = true;
+  editor.setMarkdown('', { fresh: true });
   els.main.classList.add('no-folder');
-  els.welcome.hidden = false; els.toolbar.hidden = true; els.ta.hidden = true; els.preview.hidden = true; els.sidebar.hidden = true;
-  els.folderChip.hidden = true; $('togglePreview').hidden = true; applyAiVisibility();
+  els.welcome.hidden = false; els.toolbar.hidden = true; els.fmtToolbar.hidden = true; els.docArea.hidden = true; els.sidebar.hidden = true;
+  els.folderChip.hidden = true; $('toggleSource').hidden = true; applyAiVisibility(); applySource();
   showBanner(''); hidePanel(); updateMeta(); history.replaceState(null, '', location.pathname);
   showWelcome(); setStatus('ready');
 };
 
+// formatting toolbar
+for (const b of els.fmtToolbar.querySelectorAll('button[data-cmd]')) {
+  b.onmousedown = (e) => e.preventDefault(); // keep the editor selection
+  b.onclick = () => { if (cur) editor.run(b.dataset.cmd); };
+}
+els.blockType.onchange = () => { const v = els.blockType.value; if (cur && ['p', 'h1', 'h2', 'h3'].includes(v)) editor.run(v === 'p' ? 'paragraph' : v); };
+els.lockEdit.onclick = () => { lockedByUser = !lockedByUser; editor.setLocked(lockedByUser || (cur && !cur.valid)); toast(lockedByUser ? 'reading mode: editing is off' : 'editing is on'); };
+$('linkEditBtn').onmousedown = (e) => e.preventDefault();
+$('linkEditBtn').onclick = () => editor.run('link');
+$('linkRemoveBtn').onmousedown = (e) => e.preventDefault();
+$('linkRemoveBtn').onclick = () => editor.run('unlink');
+
 $('save').onclick = saveFlow;
 $('check').onclick = runCheck;
-$('review').onclick = () => { if (cur) runReviewInto(guard(cur.text, els.ta.value), false); };
+$('review').onclick = () => { if (cur) runReviewInto(guard(cur.text, currentMarkdown()), false); };
 $('prev').onclick = () => go(-1);
 $('next').onclick = () => go(1);
-$('revert').onclick = () => { if (cur && isDirty() && confirm('discard unsaved changes?')) { els.ta.value = cur.text; render(); updateMeta(); refreshActive(); hidePanel(); } };
+$('revert').onclick = () => { if (cur && isDirty() && confirm('discard unsaved changes?')) { editor.setMarkdown(cur.text, { fresh: false, origin: 'revert' }); refreshFmCard(); updateMeta(); refreshActive(); hidePanel(); } };
 $('markDone').onclick = () => {
   if (!cur) return;
   const k = doneKey(cur.name);
@@ -523,31 +602,24 @@ $('markDone').onclick = () => {
   renderList();
 };
 $('aiOnSave').onchange = (e) => { settings.reviewOnSave = e.target.checked; saveJSON(SETTINGS_KEY, settings); };
-$('togglePreview').onclick = () => { settings.preview = !settings.preview; saveJSON(SETTINGS_KEY, settings); applyPreview(); };
+$('toggleSource').onclick = () => { settings.source = !settings.source; saveJSON(SETTINGS_KEY, settings); applySource(); };
 $('openSettings').onclick = () => openSettings(false);
 S.sCancel.onclick = () => els.settings.close();
 S.sForget.onclick = () => { setKey('', false); S.sKey.value = ''; S.sRemember.checked = false; toast('key forgotten'); };
 $('settingsForm').onsubmit = (e) => { e.preventDefault(); if (saveSettings()) els.settings.close(); };
 
-els.ta.addEventListener('input', () => {
-  clearTimeout(renderTimer);
-  renderTimer = setTimeout(render, 120);
-  updateMeta();
-  refreshActive();
-  if (els.panel.classList.contains('show') && !reviewAbort) hidePanel();
-});
 document.addEventListener('keydown', (e) => {
   const mod = e.metaKey || e.ctrlKey;
   if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); saveFlow(); }
   else if (mod && e.key === ']') { e.preventDefault(); go(1); }
   else if (mod && e.key === '[') { e.preventDefault(); go(-1); }
+  else if (mod && e.key === '/') { e.preventDefault(); if (folder) $('toggleSource').click(); }
   else if (e.key === 'Escape' && els.panel.classList.contains('show') && !els.settings.open) hidePanel();
 });
 window.addEventListener('beforeunload', (e) => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
 
 // ---------- boot ----------
 (async () => {
-  applyPreview();
   applyAiVisibility();
   await showWelcome();
   cliInfo = await probeCli();

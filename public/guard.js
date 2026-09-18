@@ -65,6 +65,8 @@ export function skeleton(text) {
     if (/^\s*(```|~~~)/.test(line)) {
       s.fenceLines++;
       inFence = !inFence;
+      blankStreak = 0;
+      inPara = false;
       continue;
     }
     if (inFence) continue;

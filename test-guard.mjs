@@ -42,6 +42,7 @@ t('capital start is info', orig.replace('nobody reads it.', 'Nobody reads it.'),
 t('one merged paragraph is info', orig.replace('nobody reads it. that\'s the whole trick.', 'nobody reads it. that\'s the whole trick. '), 'clean');
 t('trailing whitespace', orig.replace('value lives.', 'value lives.   '), 'warn', 'trailing whitespace');
 t('title no longer matches H1', orig.replace('# on keeping a notebook', '# on keeping a diary'), 'warn', 'no longer matches');
+t('a fenced block between blank lines is not a doubled blank line', orig.replace('nobody reads it.', '```\ncode\n```\n\nnobody reads it.'), 'clean');
 const broken = orig.replace(/\n/g, '\r\n').replace(/\r\n$/, '') + ' \t';
 ok(applyFixes(broken, ['crlf', 'trailing-ws', 'final-newline']) === orig, 'applyFixes restores the original byte for byte');
 ok(applyFixes('a  \nb \n```\ncode   \n```\nc\t\n', ['trailing-ws']) === 'a  \nb\n```\ncode   \n```\nc\n', 'trailing-ws fix skips hard breaks and fenced code');

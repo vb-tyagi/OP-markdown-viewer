@@ -1,3 +1,7 @@
-# Vendored libraries, copied unmodified from the npm registry tarballs. Re-verify with: npm run verify-vendor
-marked 18.0.13 marked.umd.js b147274a9ce27d17276587167e49483d719f6893eeca3a3667a59797661d3556
+# Vendored files. purify.min.js is copied unmodified from the npm registry tarball.
+# editor-bundle.js is built by scripts/build-editor.mjs from the pinned devDependencies in package.json
+# (ProseMirror packages + markdown-it, bundled with esbuild); prosemirror.css is copied from prosemirror-view.
+# Re-verify: npm run verify-vendor   Reproduce the bundle: npm ci && npm run build:editor && git diff --exit-code public/vendor/
 dompurify 3.4.15 purify.min.js f263b05369e050fa175d4ecb9c9358eb4253602d510297adfb31df48b2f1c4d5
+editor-bundle built editor-bundle.js 3dc8ceb7c7c235069886294e3c5dad517bc8b47d93d43197975d49aeefc9cf4e
+prosemirror-view 1.42.4 prosemirror.css 1234171efd99cd16d1a6754c0f6586d0d8b69573432aff2e671cb6a26c9eaa57

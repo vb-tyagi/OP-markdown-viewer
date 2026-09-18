@@ -1,12 +1,14 @@
 # OP-markdown-viewer
 
-Edit markdown files in your browser. Open files, make your changes, and save copies wherever you like, with a formatting guard that catches accidental damage on every save. Nothing is uploaded, and nothing asks for permission. Two features are there if you want them, and off until you do: saving straight back into a folder, and an AI reviewer.
+Edit markdown files in your browser, in the readable view itself. Open files, write and format like in a document, and save copies wherever you like, with a formatting guard that catches accidental damage on every save. Nothing is uploaded, and nothing asks for permission. Two features are there if you want them, and off until you do: saving straight back into a folder, and an AI reviewer.
 
 **Live:** https://op-markdown-viewer.vercel.app · **Try it:** open the live page and click "try the demo".
 
 ## What it does
 
-- **Open files** (or drop them on the page). No permission prompt, works in every browser. The page lists them, shows the raw markdown next to a rendered preview, and lets you walk through them one by one (`⌘[` / `⌘]`), marking each as done.
+- **Open files** (or drop them on the page). No permission prompt, works in every browser. The page lists them and shows each one as a readable document that you edit directly. Walk through them one by one (`⌘[` / `⌘]`), marking each as done.
+- **Format as you write.** A toolbar and shortcuts cover paragraph styles and headings, bold, italic, strikethrough, inline code, links, bulleted and numbered lists, quotes, code blocks, dividers, images by URL, clear formatting, undo and redo. Markdown habits work too: typing `## ` or `- ` at the start of a line converts it. A "read only" switch turns editing off when you only want to read.
+- **The markdown source is one click away.** The "markdown" button (`⌘/`) opens the raw source in a pane on the right. It is editable, and both views stay in sync.
 - `⌘S` **saves a copy**. In Chromium browsers a save dialog lets you choose where each copy goes (pick the original if you want to overwrite it); elsewhere the copy is downloaded. Your originals are never modified behind your back.
 - Before every save, a **formatting guard** compares the structure of what you loaded with what you are saving. A clean edit saves instantly. Warnings or damage are shown with the exact issue, and you decide.
 
@@ -14,6 +16,29 @@ Two optional features, each with an (i) explainer in the app and off until you c
 
 - **Direct folder saving.** Open a folder instead of files. The browser asks once for permission to read and write inside that one folder, and saves then go straight back into the original files, with a backup copy first. Chromium browsers only.
 - **AI reviewer.** A second opinion on formatting only, never on the prose. It runs with your own Anthropic API key, or through your local `claude` CLI when you run the companion server. Enable it in settings.
+
+## How editing keeps your markdown intact
+
+The document is parsed into blocks that remember their exact source text. When you save, every block you did not touch is written back from that original text, byte for byte, along with the blank lines around it. Only the blocks you changed are rewritten, and those follow the conventions detected in the file itself: `*` or `_` for emphasis, `**` or `__` for strong, `-`, `*` or `+` for bullets, two-space or backslash line breaks, ``` or ~~~ fences.
+
+A rewritten paragraph comes out on one line, and characters that would otherwise change meaning (`*`, `[`, a backtick) are escaped. Front matter is shown as a small editable card above the document. Things the editor does not model, such as tables and raw HTML blocks, are shown read-only and pass through untouched; edit them in the markdown pane. Inline HTML such as `<u>…</u>` renders and round-trips as written, although the toolbar deliberately has no underline button, since markdown has none.
+
+## Formatting shortcuts
+
+| Action | Shortcut |
+|---|---|
+| bold, italic, strikethrough, inline code | `⌘B`, `⌘I`, `⌘⇧S`, `⌘E` |
+| link | `⌘K` |
+| bulleted list, numbered list, quote | `⌘⇧8`, `⌘⇧7`, `⌘⇧9` |
+| paragraph, heading 1, 2, 3 | `⌘⌥0`, `⌘⌥1`, `⌘⌥2`, `⌘⌥3` |
+| code block | `⌘⌥C` |
+| line break inside a paragraph | `⇧⏎` |
+| indent or outdent a list item | `⇥`, `⇧⇥` |
+| undo, redo | `⌘Z`, `⌘⇧Z` |
+| markdown pane | `⌘/` |
+| save, previous file, next file | `⌘S`, `⌘[`, `⌘]` |
+
+On Windows and Linux, use `Ctrl` for `⌘` and `Alt` for `⌥`.
 
 ## Browser support
 
@@ -74,7 +99,9 @@ cd OP-markdown-viewer
 npm start
 ```
 
-Then open http://127.0.0.1:4545. No dependencies to install. Node 18 or newer.
+Then open http://127.0.0.1:4545. Nothing to install for running it; Node 18 or newer.
+
+The editor engine (ProseMirror and markdown-it) ships as one committed file, `public/vendor/editor-bundle.js`, built from the pinned `devDependencies` by `npm run build:editor`. You only need `npm ci` if you want to rebuild that bundle or run the test suite.
 
 ## Deploy your own
 
@@ -87,23 +114,25 @@ It is a static site. The `public/` folder is the whole thing.
 
 ## Privacy and security
 
-No accounts, no analytics, no cookies, no third-party scripts, no remote fonts. The only network destination the page can reach is `api.anthropic.com`, and only when you enable the AI reviewer. A strict Content Security Policy is set both in the page and in the hosting headers (on GitHub Pages only the in-page policy applies, since Pages cannot send headers). The markdown preview is sanitized with DOMPurify. Vendored libraries are pinned by SHA-256 and loaded with Subresource Integrity (`npm run verify-vendor`). See [SECURITY.md](SECURITY.md) for the data flows and the threat model.
+No accounts, no analytics, no cookies, no third-party scripts, no remote fonts. A strict Content Security Policy is set both in the page and in the hosting headers. Pasted HTML and passthrough blocks are sanitized with DOMPurify, and links are limited to http, https, mailto and tel. Vendored files are pinned by SHA-256 (`npm run verify-vendor`), and CI rebuilds the editor bundle from the pinned packages to prove the committed file matches. See [SECURITY.md](SECURITY.md) for the data flows and the threat model.
 
 ## Layout
 
 ```
 public/            the app (deploy this folder)
   index.html       markup, CSP meta tag
-  app.js           UI and save flow
+  app.js           UI, modes and save flow
+  mdeditor.js      the rich editor (ProseMirror view, toolbar commands, shortcuts)
+  mdcore.js        markdown schema, parser, serializer and the block splicer
   guard.js         formatting guard (pure function, also used by the tests)
-  fs.js            folder providers: real folder, demo sandbox, download fallback
+  fs.js            folder providers: files mode, real folder, demo sandbox
   review.js        AI reviewer providers (Anthropic API, local CLI)
   review-core.js   reviewer prompt and reply parser, shared with the server
   samples/         sample essays for the demo
-  vendor/          marked and DOMPurify, pinned by hash
+  vendor/          DOMPurify and the built editor bundle, pinned by hash
 server.js          optional local companion (static files + CLI reviewer)
-test-guard.mjs     tests (npm test)
-scripts/           vendor hash verification
+test-guard.mjs     guard tests, test-editor.mjs editor fidelity tests (npm test)
+scripts/           editor bundle build, vendor hash verification
 ```
 
 ## License
