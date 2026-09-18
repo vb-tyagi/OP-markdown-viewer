@@ -147,6 +147,25 @@ console.log('== marks and escaping ==');
   ok(out(p, doc) === 'a paragraph\nwrapped over\nthree lines.\n\n## heading two\n', 'editing the heading leaves the wrapped paragraph alone', out(p, doc));
 }
 
+console.log('== soft-wrapped paragraphs keep their wrapping ==');
+{
+  const text = 'a paragraph\nwrapped over\nthree lines.\n\n> quoted line one\n> quoted line two\n\n- item one\n- item two\n';
+  const p = parseMarkdown(text);
+  ok(p.doc.child(0).content.content.some((n) => n.type.name === 'soft_break'), 'soft breaks parse as nodes');
+  ok(roundTrip(text) === text, 'wrapped text round-trips unchanged');
+  const doc = appendTo(p, 0, ' plus more');
+  ok(out(p, doc) === 'a paragraph\nwrapped over\nthree lines. plus more\n\n> quoted line one\n> quoted line two\n\n- item one\n- item two\n', 'an edited wrapped paragraph keeps its line breaks', out(p, doc));
+  const doc2 = appendTo(p, 1, '!');
+  ok(out(p, doc2) === 'a paragraph\nwrapped over\nthree lines.\n\n> quoted line one\n> quoted line two!\n\n- item one\n- item two\n', 'a wrapped blockquote keeps its > prefixes', out(p, doc2));
+  ok(fixpoint(out(p, doc)) && fixpoint(out(p, doc2)), 'wrapped output re-parses identically');
+  const q = parseMarkdown('first line\n2. not a list\n');
+  ok(q.doc.childCount === 1, 'a numbered line that cannot interrupt a paragraph is a continuation line');
+  const doc3 = appendTo(q, 0, '.');
+  ok(out(q, doc3) === 'first line\n2\\. not a list.\n', 'a continuation line that would become a list after editing is escaped', out(q, doc3));
+  ok(fixpoint(out(q, doc3)), 'the escaped continuation re-parses identically');
+  ok(findMatches(p.doc, 'paragraph wrapped').length === 1, 'find treats a soft break as a space');
+}
+
 console.log('== front matter and misc ==');
 {
   ok(splitFrontMatter('---\na: 1\n---\nbody\n').fmInner === 'a: 1', 'front matter split');

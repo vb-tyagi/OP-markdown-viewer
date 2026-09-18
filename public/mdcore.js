@@ -45,6 +45,13 @@ export const schema = new Schema({
         toDOM: (node) => ['div', { class: 'opaque', 'data-kind': node.attrs.kind }, node.attrs.raw],
         parseDOM: [],
       },
+      // A line break inside a paragraph in the source (a soft wrap). Shown as a space, written back
+      // as the original newline, so hard-wrapped files keep their wrapping when edited.
+      soft_break: {
+        group: 'inline', inline: true, selectable: false,
+        toDOM: () => ['span', { class: 'softbreak' }, ' '],
+        parseDOM: [{ tag: 'span.softbreak' }],
+      },
       // An unpaired inline HTML tag, kept as an inert atom so it passes through untouched.
       html_inline: {
         group: 'inline', inline: true, atom: true, selectable: true,
@@ -149,6 +156,7 @@ const tokenizer = { parse: (src, env) => transformTokens(md.parse(src, env), src
 export const parser = new MarkdownParser(schema, tokenizer, {
   ...defaultMarkdownParser.tokens,
   s: { mark: 'strikethrough' },
+  softbreak: { node: 'soft_break' },
   htmltag: { mark: 'html', getAttrs: (tok) => ({ tag: tok.meta.tag }) },
   html_inline: { node: 'html_inline', getAttrs: (tok) => ({ raw: tok.content }) },
   opaque: { node: 'opaque', getAttrs: (tok) => ({ raw: tok.content, kind: tok.meta.kind }) },
@@ -205,6 +213,13 @@ export function makeSerializer(conv) {
     },
     opaque(state, node) { state.text(node.attrs.raw, false); state.closeBlock(node); },
     html_inline(state, node) { state.write(node.attrs.raw); },
+    soft_break(state) { state.text('\n', false); },
+    // Text that starts a new source line after a soft break gets start-of-line escaping, so an
+    // edited continuation line can never turn into a heading, list, or quote by accident.
+    text(state, node, parent, index) {
+      if (index > 0 && parent.child(index - 1).type === schema.nodes.soft_break && !state.inAutolink) state.atBlockStart = true;
+      state.text(node.text, !state.inAutolink);
+    },
   };
   if (conv.fence === '~~~') {
     nodes.code_block = (state, node) => {

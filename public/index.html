@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.anthropic.com; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https:; font-src 'self'; connect-src 'self' https://api.anthropic.com; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'self'">
 <meta name="referrer" content="no-referrer">
 <meta name="color-scheme" content="light dark">
 <meta name="description" content="Edit markdown files in your browser, in a readable view with formatting tools. Every save goes through a formatting guard. Nothing is uploaded.">
@@ -178,6 +178,10 @@
       <legend>saving <button class="info-btn" data-info="folder" type="button" aria-label="about direct folder saving" title="what is this?">i</button></legend>
       <p class="small" id="sMode"></p>
       <label class="chk"><input type="checkbox" id="sBackups"><span>in direct mode, keep a backup copy before each save, in <code id="sBackupDir"></code> inside the folder</span></label>
+    </fieldset>
+    <fieldset>
+      <legend>images</legend>
+      <label class="chk"><input type="checkbox" id="sImages"><span>show images from the web inside documents. the image's host sees a request from your browser when the file opens; switch this off to get click-to-load placeholders instead.</span></label>
     </fieldset>
     <div class="actions">
       <button type="button" id="sCancel">cancel</button>

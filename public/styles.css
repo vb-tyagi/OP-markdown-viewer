@@ -106,6 +106,8 @@ main.no-folder #editor { grid-template-rows: 1fr; border-right: 0; overflow-y: a
 .doc-body s { color: var(--muted); }
 .doc-body .htmltag { font-family: var(--mono); font-size: .78em; color: var(--muted); background: color-mix(in srgb, var(--line) 45%, transparent); border-radius: 3px; padding: 0 3px; }
 .doc-body .img-missing { font-family: var(--mono); font-size: 12px; color: var(--muted); border: 1px dashed var(--line); border-radius: 4px; padding: 2px 6px; }
+.doc-body button.img-load { cursor: pointer; background: var(--panel); }
+.doc-body button.img-load:hover { border-color: var(--accent); color: var(--accent); }
 .doc-body .opaque { border: 1px dashed var(--line); border-radius: 8px; padding: 8px 12px 10px; margin: 0 0 18px; }
 .doc-body .opaque-label { display: block; font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
 .doc-body .opaque-body { font-size: 15.5px; }

@@ -23,7 +23,7 @@ const KEY_NAME = `${APP_SLUG}.anthropic-key`;
 const DONE_KEY = `${APP_SLUG}.done`;
 // Both optional features are off until the user opts in: direct folder saving is chosen per session on the
 // start screen, and the AI reviewer is a setting (`ai`) that defaults to false.
-const DEFAULTS = { ai: false, provider: 'auto', model: DEFAULT_MODEL, styleNotes: '', backups: true, reviewOnSave: false, source: false };
+const DEFAULTS = { ai: false, provider: 'auto', model: DEFAULT_MODEL, styleNotes: '', backups: true, reviewOnSave: false, source: false, images: true };
 let settings = { ...DEFAULTS, ...loadJSON(SETTINGS_KEY, {}) };
 
 function loadJSON(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } }
@@ -121,6 +121,7 @@ const editor = createEditor({
   onUpdate: updateToolbar,
   onLinkRequest: ({ existing, selectedText, coords }) => openPopover('link', { existing, selectedText, coords }),
   onImageRequest: ({ coords }) => openPopover('image', { coords }),
+  loadRemoteImages: () => settings.images,
 });
 
 // ---------- link and image popover ----------
@@ -642,7 +643,7 @@ function finishSave(status) {
 }
 
 // ---------- settings dialog ----------
-const S = Object.fromEntries(["sAiEnabled", "sAiFields", "sBackupDir", "sBackups", "sCancel", "sCliNote", "sForget", "sKey", "sModel", "sMode", "sNotes", "sProvider", "sProviderCli", "sRemember", "sReviewOnSave", "sVersion"].map((id) => [id, $(id)]));
+const S = Object.fromEntries(["sAiEnabled", "sAiFields", "sBackupDir", "sBackups", "sCancel", "sCliNote", "sForget", "sImages", "sKey", "sModel", "sMode", "sNotes", "sProvider", "sProviderCli", "sRemember", "sReviewOnSave", "sVersion"].map((id) => [id, $(id)]));
 function openSettings(focusAi = false) {
   S.sAiEnabled.checked = focusAi ? true : settings.ai;
   S.sAiFields.hidden = !S.sAiEnabled.checked;
@@ -658,6 +659,7 @@ function openSettings(focusAi = false) {
   S.sNotes.value = settings.styleNotes;
   S.sReviewOnSave.checked = settings.reviewOnSave;
   S.sBackups.checked = settings.backups;
+  S.sImages.checked = settings.images;
   S.sBackupDir.textContent = BACKUP_DIR_NAME;
   S.sCliNote.hidden = !cliInfo;
   if (cliInfo) S.sCliNote.textContent = `local companion detected: reviews can run through your claude CLI (model: ${cliInfo.model}).`;
@@ -665,6 +667,7 @@ function openSettings(focusAi = false) {
   els.settings.showModal();
 }
 function saveSettings() {
+  const imagesBefore = settings.images;
   const key = S.sKey.value.trim();
   if (key && !looksLikeKey(key) && !confirm('that does not look like an Anthropic API key (they start with sk-ant-). keep it anyway?')) return false;
   setKey(key, S.sRemember.checked);
@@ -676,8 +679,11 @@ function saveSettings() {
     styleNotes: S.sNotes.value,
     reviewOnSave: S.sReviewOnSave.checked,
     backups: S.sBackups.checked,
+    images: S.sImages.checked,
   };
+  const imagesChanged = imagesBefore !== settings.images;
   saveJSON(SETTINGS_KEY, settings);
+  if (imagesChanged) editor.redraw(); // image nodes pick up the new policy
   $('aiOnSave').checked = settings.reviewOnSave;
   applyAiVisibility();
   toast(settings.ai ? 'settings saved · AI reviewer on' : 'settings saved');

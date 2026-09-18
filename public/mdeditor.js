@@ -147,22 +147,38 @@ const findPlugin = new Plugin({
 
 // ---------- node views ----------
 class ImageView {
-  constructor(node) {
+  constructor(node, loadRemote) {
     this.dom = document.createElement('span');
     this.dom.className = 'img-wrap';
-    const img = document.createElement('img');
-    img.src = node.attrs.src;
-    if (node.attrs.alt) img.alt = node.attrs.alt;
-    if (node.attrs.title) img.title = node.attrs.title;
-    img.addEventListener('error', () => {
-      const s = document.createElement('span');
-      s.className = 'img-missing';
-      s.textContent = `image: ${node.attrs.alt || '(no alt)'} · ${node.attrs.src}`;
-      img.replaceWith(s);
-    });
-    this.dom.appendChild(img);
+    const remote = /^https?:/i.test(node.attrs.src);
+    const load = () => {
+      const img = document.createElement('img');
+      img.src = node.attrs.src;
+      if (node.attrs.alt) img.alt = node.attrs.alt;
+      if (node.attrs.title) img.title = node.attrs.title;
+      img.addEventListener('error', () => {
+        const s = document.createElement('span');
+        s.className = 'img-missing';
+        s.textContent = `image: ${node.attrs.alt || '(no alt)'} · ${node.attrs.src}`;
+        img.replaceWith(s);
+      });
+      this.dom.replaceChildren(img);
+    };
+    if (remote && loadRemote && !loadRemote()) {
+      // Web images are off: show a placeholder that loads this one image on request.
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'img-missing img-load';
+      let host = node.attrs.src;
+      try { host = new URL(node.attrs.src).host; } catch {}
+      btn.textContent = `image: ${node.attrs.alt || '(no alt)'} · ${host} · click to load`;
+      btn.addEventListener('click', (e) => { e.preventDefault(); load(); });
+      this.dom.appendChild(btn);
+    } else {
+      load();
+    }
   }
-  stopEvent() { return false; }
+  stopEvent(e) { return e.type === 'click' && e.target.classList.contains('img-load'); }
 }
 class OpaqueView {
   constructor(node, sanitize) {
@@ -183,7 +199,7 @@ class OpaqueView {
 }
 
 // ---------- editor ----------
-export function createEditor({ mount, sanitize, onChange, onUpdate, onLinkRequest, onImageRequest }) {
+export function createEditor({ mount, sanitize, onChange, onUpdate, onLinkRequest, onImageRequest, loadRemoteImages }) {
   let locked = false;
   let base = { fmRaw: '', fmInner: null, baseline: null };
   let fmInner = null;
@@ -220,14 +236,16 @@ export function createEditor({ mount, sanitize, onChange, onUpdate, onLinkReques
     keymap(baseKeymap),
   ];
 
+  // Fresh closures each time, so passing them again forces ProseMirror to redraw every node view.
+  const nodeViews = () => ({
+    image: (node) => new ImageView(node, loadRemoteImages),
+    opaque: (node) => new OpaqueView(node, sanitize),
+  });
   const view = new EditorView(mount, {
     state: EditorState.create({ schema, plugins: plugins() }),
     editable: () => !locked,
     attributes: { class: 'doc-body', spellcheck: 'true' },
-    nodeViews: {
-      image: (node) => new ImageView(node),
-      opaque: (node) => new OpaqueView(node, sanitize),
-    },
+    nodeViews: nodeViews(),
     transformPastedHTML: (html) => (sanitize ? sanitize(html) : html),
     dispatchTransaction(tr) {
       const next = view.state.apply(tr);
@@ -366,6 +384,7 @@ export function createEditor({ mount, sanitize, onChange, onUpdate, onLinkReques
     destroy: () => view.destroy(),
     applyLink: direct.applyLink,
     insertImage: direct.insertImage,
+    redraw() { view.setProps({ nodeViews: nodeViews() }); },
     selectionCoords: () => selectionCoords(view),
     find: {
       state() {

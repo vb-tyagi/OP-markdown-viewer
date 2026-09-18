@@ -14,12 +14,13 @@ A static web page. There is no server, no account, no database, and no analytics
 | "Done" marks, settings | `localStorage` of this site in your browser. |
 | Anthropic API key (optional) | `sessionStorage` by default; plaintext `localStorage` of this site if you tick "remember" (readable by browser extensions with access to the site). Sent only to `https://api.anthropic.com`. |
 | During an AI review (optional) | The file name, the original and edited text, and your style notes are sent to `https://api.anthropic.com` with your key, or to the local companion on `127.0.0.1` if you run `npm start`. |
+| Images referenced by a document (default on) | Fetched over https from the image's host when the file opens, so that host sees your browser's request. The "show images from the web" setting turns this off; images then appear as click-to-load placeholders. |
 
-The Content Security Policy (`connect-src 'self' https://api.anthropic.com`) makes any other network destination impossible for page scripts.
+The Content Security Policy (`connect-src 'self' https://api.anthropic.com`, `img-src 'self' data: blob: https:`) makes any other network destination impossible for page scripts; images are the only content that can be fetched from arbitrary https hosts, and only when a document references them.
 
 ## Hardening in place
 
-- Strict CSP: no inline scripts or styles, no third-party scripts, no frames, no workers, no remote images. Vendored scripts carry Subresource Integrity hashes.
+- Strict CSP: no inline scripts or styles, no third-party scripts, no frames, no workers. Remote images are allowed over https only, and can be switched to click-to-load in settings. Vendored scripts carry Subresource Integrity hashes.
 - The document is rendered by the editor from a fixed schema (text, headings, lists, links, images, code), never from the file's HTML. Raw HTML blocks and tables are shown through DOMPurify with `id`, `name`, `class` and `style` attributes stripped, pasted HTML goes through the same sanitizer before the editor parses it, and link and image URLs are limited to http, https, mailto, tel and relative paths. A hostile `.md` file therefore cannot run script, read the stored key, clobber the app's own element lookups, or impersonate its buttons and panels.
 - Both optional features are off by default and explained in the app with an (i) button before you turn them on.
 - In direct mode the page only ever opens existing `.md` and `.markdown` files at the top level of the folder you choose and never creates new files outside its backup folder.

@@ -9,6 +9,9 @@ Edit markdown files in your browser, in the readable view itself. Open files, wr
 - **Open files** (or drop them on the page). No permission prompt, works in every browser. The page lists them and shows each one as a readable document that you edit directly. Walk through them one by one (`⌘[` / `⌘]`), marking each as done.
 - **Format as you write.** A toolbar and shortcuts cover paragraph styles and headings, bold, italic, strikethrough, inline code, links, bulleted and numbered lists, quotes, code blocks, dividers, images by URL, clear formatting, undo and redo. Markdown habits work too: typing `## ` or `- ` at the start of a line converts it. A "read only" switch turns editing off when you only want to read.
 - **The markdown source is one click away.** The "markdown" button (`⌘/`) opens the raw source in a pane on the right. It is editable, and both views stay in sync.
+- **See what will change before you save.** The save panel (and the "check" button) shows a line diff of the markdown: exactly which lines the editor touched, with the changed words highlighted, and nothing else.
+- **Find and replace** inside the document (`⌘F`), with match highlighting, match case, replace one and replace all. A filter box narrows the file list (`⌘⇧F`).
+- **Works on phones and tablets.** The file list becomes a drawer, the markdown pane an overlay, and the toolbars scroll sideways.
 - `⌘S` **saves a copy**. In Chromium browsers a save dialog lets you choose where each copy goes (pick the original if you want to overwrite it); elsewhere the copy is downloaded. Your originals are never modified behind your back.
 - Before every save, a **formatting guard** compares the structure of what you loaded with what you are saving. A clean edit saves instantly. Warnings or damage are shown with the exact issue, and you decide.
 
@@ -21,7 +24,7 @@ Two optional features, each with an (i) explainer in the app and off until you c
 
 The document is parsed into blocks that remember their exact source text. When you save, every block you did not touch is written back from that original text, byte for byte, along with the blank lines around it. Only the blocks you changed are rewritten, and those follow the conventions detected in the file itself: `*` or `_` for emphasis, `**` or `__` for strong, `-`, `*` or `+` for bullets, two-space or backslash line breaks, ``` or ~~~ fences.
 
-A rewritten paragraph comes out on one line, and characters that would otherwise change meaning (`*`, `[`, a backtick) are escaped. Front matter is shown as a small editable card above the document. Things the editor does not model, such as tables and raw HTML blocks, are shown read-only and pass through untouched; edit them in the markdown pane. Inline HTML such as `<u>…</u>` renders and round-trips as written, although the toolbar deliberately has no underline button, since markdown has none.
+A hard-wrapped paragraph keeps its existing line breaks when edited; new text simply extends the line it is typed on. Characters that would otherwise change meaning (`*`, `[`, a backtick, or a list or heading marker at the start of a wrapped line) are escaped. Front matter is shown as a small editable card above the document. Things the editor does not model, such as tables and raw HTML blocks, are shown read-only and pass through untouched; edit them in the markdown pane. Inline HTML such as `<u>…</u>` renders and round-trips as written, although the toolbar deliberately has no underline button, since markdown has none.
 
 ## Formatting shortcuts
 
@@ -36,6 +39,7 @@ A rewritten paragraph comes out on one line, and characters that would otherwise
 | indent or outdent a list item | `⇥`, `⇧⇥` |
 | undo, redo | `⌘Z`, `⌘⇧Z` |
 | markdown pane | `⌘/` |
+| find and replace, filter the file list | `⌘F`, `⌘⇧F` |
 | save, previous file, next file | `⌘S`, `⌘[`, `⌘]` |
 
 On Windows and Linux, use `Ctrl` for `⌘` and `Alt` for `⌥`.
@@ -114,7 +118,7 @@ It is a static site. The `public/` folder is the whole thing.
 
 ## Privacy and security
 
-No accounts, no analytics, no cookies, no third-party scripts, no remote fonts. A strict Content Security Policy is set both in the page and in the hosting headers. Pasted HTML and passthrough blocks are sanitized with DOMPurify, and links are limited to http, https, mailto and tel. Vendored files are pinned by SHA-256 (`npm run verify-vendor`), and CI rebuilds the editor bundle from the pinned packages to prove the committed file matches. See [SECURITY.md](SECURITY.md) for the data flows and the threat model.
+No accounts, no analytics, no cookies, no third-party scripts, no remote fonts. A strict Content Security Policy is set both in the page and in the hosting headers. Pasted HTML and passthrough blocks are sanitized with DOMPurify, and links are limited to http, https, mailto and tel. Images referenced by a document are loaded from the web by default so they show up in the editor; that lets the image's host see a request from your browser, and the setting "show images from the web" turns it into click-to-load placeholders instead. Vendored files are pinned by SHA-256 (`npm run verify-vendor`), and CI rebuilds the editor bundle from the pinned packages to prove the committed file matches. See [SECURITY.md](SECURITY.md) for the data flows and the threat model.
 
 ## Layout
 
