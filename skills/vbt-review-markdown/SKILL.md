@@ -5,7 +5,7 @@ description: Open markdown files for reviewing and editing in OP-markdown-viewer
 
 # Review markdown in OP-markdown-viewer
 
-Starts the tool locally with the user's files loaded, in the browser, on a port that is guaranteed free.
+Starts the tool locally with the user's files loaded, in the browser, on a port that nothing else on the machine is using as far as the system can tell.
 
 The tool lives at https://github.com/vb-tyagi/OP-markdown-viewer. Locally it is expected at
 `~/v-my-apps/OP-markdown-viewer` (override with the `OP_MARKDOWN_VIEWER_DIR` environment variable).
@@ -14,7 +14,10 @@ The tool lives at https://github.com/vb-tyagi/OP-markdown-viewer. Locally it is 
 
 ```bash
 TOOL_DIR="${OP_MARKDOWN_VIEWER_DIR:-$HOME/v-my-apps/OP-markdown-viewer}"
-[ -f "$TOOL_DIR/server.js" ] || git clone https://github.com/vb-tyagi/OP-markdown-viewer.git "$TOOL_DIR"
+if [ ! -f "$TOOL_DIR/server.js" ]; then
+  if [ -e "$TOOL_DIR" ]; then echo "$TOOL_DIR exists but is not the tool; set OP_MARKDOWN_VIEWER_DIR" >&2; exit 1; fi
+  git clone https://github.com/vb-tyagi/OP-markdown-viewer.git "$TOOL_DIR"
+fi
 ```
 
 Nothing to install: the app has no runtime dependencies. Node 18 or newer is required.
@@ -30,39 +33,52 @@ If the user has not already said, ask one question with three choices:
 Check that the paths exist and are markdown before going on. Never guess a path the user did not
 name, and never widen a file list into its whole folder without asking.
 
+Paths go into shell commands, so treat them as data, never as code:
+
+- Use absolute paths, and put every path in **single quotes** (a `'` inside a name becomes `'\''`).
+  Double quotes are not enough: `$(…)`, backticks and `$VAR` still expand inside them.
+- Refuse a name that contains a newline, `$`, a backtick, or that starts with `-`, and tell the user
+  why. A whole-folder review with `--dir` avoids listing file names at all; prefer it.
+- The server refuses symbolic links passed with `--files` and skips them inside `--dir`; if the
+  user's file is a link, ask them for the real path.
+
 ## Step 2: pick a port that is free (mandatory, every time)
 
 Never assume a port is free, and never hard-code one. Ports like 3000, 5173 and 8000 are almost
-always taken on a developer machine, and this user runs several servers in parallel. The tool ships
-the check:
+always taken on a developer machine, and several servers often run in parallel. The tool ships the
+check:
 
 ```bash
 PORT=$(node "$TOOL_DIR/scripts/free-port.mjs")
 ```
 
-It reads the machine's listening sockets (`lsof -iTCP -sTCP:LISTEN -P -n`), skips every port in use,
-and confirms the candidate by binding to it, walking upward from 4545. The server repeats the same
-check when it starts, so even a race with another process cannot produce a clash: if the requested
-port is busy it moves to the next free one and prints the port it actually took.
+It reads the machine's listening sockets (`lsof`, plus `netstat` or `ss` so other users' sockets
+count too), skips every port in use, and confirms the candidate by binding to it on both
+`127.0.0.1` and `::1`, walking upward from 4545. The server repeats the check when it starts and
+retries if the port was taken in between, so the URL it prints is the one to use, whatever port was
+requested.
 
 ## Step 3: start the companion with the files
 
 Run it in the background and keep the log:
 
 ```bash
-cd "$TOOL_DIR" && PORT=$PORT node server.js --dir "/path/to/folder"        # a folder
-cd "$TOOL_DIR" && PORT=$PORT node server.js --files "/path/a.md" "/path/b.md"   # specific files
-cd "$TOOL_DIR" && PORT=$PORT node server.js                                     # nothing preloaded
+cd "$TOOL_DIR" && PORT=$PORT node server.js --dir '/absolute/path/to/folder'         # a folder
+cd "$TOOL_DIR" && PORT=$PORT node server.js --files '/absolute/a.md' '/absolute/b.md'   # specific files
+cd "$TOOL_DIR" && PORT=$PORT node server.js                                              # nothing preloaded
 ```
 
-Wait for the log line that begins with `open http://127.0.0.1:` and take the URL from that line, not
-from the `PORT` you requested: it is the port the server really bound. The `files` line lists what was
-loaded. If the server exits with `no .md or .markdown files found`, tell the user and go back to Step 1.
+Wait for the log line that begins with `open http://127.0.0.1:` and take the **whole URL** from that
+line, `?t=…` included: the port is the one the server really bound, and the `t` value is the key
+this session's page needs to talk to the server (without it the page shows a banner and cannot open
+the files). The `files` lines list what was loaded. If the server exits with `no .md or .markdown
+files found` or `is a symbolic link`, tell the user and go back to Step 1.
 
 ## Step 4: open it in the browser
 
-- In the Claude desktop app: `preview_start` with `{url: "<the URL from the log>"}`.
-- In a terminal session: `open "<URL>"` on macOS, `xdg-open` on Linux, or paste the URL for the user.
+- In the Claude desktop app: `preview_start` with `{url: "<the whole URL from the log>"}`.
+- In a terminal session: `open '<URL>'` on macOS, `xdg-open` on Linux, or paste the URL for the user.
+  The URL is single-use per tab in the sense that a second tab needs it pasted again.
 
 The page detects the session and opens the files at once; "change" on the header returns to the start
 screen, where "open files from your terminal" brings them back. The user can still open, drag or drop
@@ -85,8 +101,8 @@ Kill the background server process and confirm the port is released. Leave the b
 
 ## Guardrails
 
-- The server only ever serves the files named on its command line; that is the whole safety story.
-  Do not add paths the user did not ask for.
+- The server only ever serves the files named on its command line, refuses links, and needs the key
+  from its own URL; that is the whole safety story. Do not add paths the user did not ask for.
 - One server per review session. If a previous one is still running, reuse it or stop it first.
 - Port choice is never optional. Always run the free-port check before starting, even if a port
   "should" be free.

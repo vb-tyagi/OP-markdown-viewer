@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EditorState } from './public/vendor/editor-bundle.js';
-import { schema, parseMarkdown, serializeMarkdown, detectConventions, splitFrontMatter, safeHref, findMatches } from './public/mdcore.js';
+import { schema, parseMarkdown, serializeMarkdown, detectConventions, splitFrontMatter, safeHref, isRemoteUrl, findMatches } from './public/mdcore.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const samplesDir = path.join(here, 'public', 'samples');
@@ -171,6 +171,9 @@ console.log('== front matter and misc ==');
   ok(splitFrontMatter('---\na: 1\n---\nbody\n').fmInner === 'a: 1', 'front matter split');
   ok(splitFrontMatter('no front matter\n').fmInner === null, 'no front matter');
   ok(safeHref('https://x.y') === 'https://x.y' && safeHref('javascript:alert(1)') === null && safeHref('mailto:a@b.c') && safeHref('../rel.md') === '../rel.md', 'href safety');
+  ok(safeHref('java\tscript:alert(1)') === null && safeHref('javascript\u0000:x') === null && safeHref('JavaScript:x') === null && safeHref('ms-msdt:/id/x') === null && safeHref('smb://h/s') === null && safeHref('data:text/html,hi') === null && safeHref('#frag') === '#frag' && safeHref('?q=1') === '?q=1' && safeHref('//cdn.example/x') === '//cdn.example/x', 'href safety against disguised and foreign schemes');
+  const base = 'https://op.example/';
+  ok(isRemoteUrl('https://evil.example/p.png', base) && isRemoteUrl('//evil.example/p.png', base) && !isRemoteUrl('images/x.png', base) && !isRemoteUrl('/x.png', base) && !isRemoteUrl('data:image/png;base64,AA', base) && isRemoteUrl('HTTPS://evil.example/p', base), 'remote image detection covers protocol-relative and case variants');
   const p = parseMarkdown('[x](javascript:alert(1)) and ![i](https://e.com/i.png)\n');
   ok(!p.doc.child(0).firstChild.marks.some((m) => m.type.name === 'link'), 'javascript: link is not parsed as a link');
   const empty = parseMarkdown('');

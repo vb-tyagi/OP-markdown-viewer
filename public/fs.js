@@ -11,6 +11,7 @@
 // "sandbox"  the browser's private origin file system, seeded with sample essays (the demo)
 // "fallback" files picked with <input type=file>; saving downloads an edited copy
 import { APP_SLUG, BACKUP_DIR_NAME } from './config.js';
+import { isLocalhost, localHeaders } from './local.js';
 
 const MD_NAME = /^[^/\\\x00]+\.(md|markdown)$/i;
 export function isMarkdownName(name) {
@@ -253,14 +254,13 @@ export function download(name, text, opts) {
 // ---------- session: files named on the local companion's command line ----------
 // `node server.js --dir <folder>` (or --files) makes the companion serve those files; the page
 // reads and saves them through it, so saving in place works in every browser. Only on localhost.
-function isLocalhost() {
-  const h = typeof location !== 'undefined' ? location.hostname : '';
-  return h === 'localhost' || h === '127.0.0.1';
-}
+// Returns the session, null when there is none, or { unauthorized: true } when the companion is
+// there but this tab has no key (the page was opened without the ?t= part of the printed URL).
 export async function probeSession() {
   if (!isLocalhost()) return null;
   try {
-    const r = await fetch('./api/session', { cache: 'no-store', credentials: 'omit' });
+    const r = await fetch('./api/session', { cache: 'no-store', credentials: 'omit', headers: localHeaders() });
+    if (r.status === 401) return { unauthorized: true };
     if (!r.ok) return null;
     const j = await r.json();
     return j && j.ok ? j : null;
@@ -278,14 +278,14 @@ class SessionFolder {
     this.serverBackups = true; // the companion writes the backup as part of the save
   }
   async list() {
-    const r = await fetch('./api/session', { cache: 'no-store', credentials: 'omit' });
+    const r = await fetch('./api/session', { cache: 'no-store', credentials: 'omit', headers: localHeaders() });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.ok) throw new Error(j.error || 'the local companion is not serving a session');
     return j.files.map((f) => ({ name: f.name, size: f.size, lastModified: f.mtimeMs }));
   }
   async read(name) {
-    const r = await fetch(`./api/session/file?name=${encodeURIComponent(name)}`, { cache: 'no-store', credentials: 'omit' });
-    if (!r.ok) throw new Error(`could not read ${name} (${r.status})`);
+    const r = await fetch(`./api/session/file?name=${encodeURIComponent(name)}`, { cache: 'no-store', credentials: 'omit', headers: localHeaders() });
+    if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `could not read ${name} (${r.status})`); }
     const bytes = new Uint8Array(await r.arrayBuffer());
     return { ...decodeBytes(bytes), lastModified: Number(r.headers.get('X-Mtime-Ms')), size: bytes.length };
   }
@@ -297,9 +297,9 @@ class SessionFolder {
   async write(name, text, opts = {}) {
     const bytes = encodeText(text, opts);
     const q = new URLSearchParams({ name, mtime: opts.expectMtime != null ? String(opts.expectMtime) : '', force: opts.force ? '1' : '0', backup: opts.backup === false ? '0' : '1' });
-    const r = await fetch(`./api/session/file?${q}`, { method: 'PUT', credentials: 'omit', headers: { 'content-type': 'application/octet-stream' }, body: bytes });
+    const r = await fetch(`./api/session/file?${q}`, { method: 'PUT', credentials: 'omit', headers: localHeaders({ 'content-type': 'application/octet-stream' }), body: bytes });
     const j = await r.json().catch(() => ({}));
-    if (r.status === 409) throw Object.assign(new Error('the file changed on disk since you opened it'), { conflict: true });
+    if (r.status === 409) throw Object.assign(new Error(j.error || 'the file changed on disk since you opened it'), { conflict: !!j.conflict, status: 409 });
     if (!r.ok || !j.ok) throw new Error(j.error || `save failed (${r.status})`);
     return { lastModified: j.mtimeMs, bytes: j.bytes, backup: j.backup || null };
   }

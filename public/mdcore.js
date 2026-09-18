@@ -11,14 +11,29 @@ import {
 } from './vendor/editor-bundle.js';
 
 // ---------- links ----------
-const SAFE_SCHEMES = ['http', 'https', 'mailto', 'tel'];
+const SAFE_SCHEMES = ['http:', 'https:', 'mailto:', 'tel:'];
+// Only http, https, mailto, tel and relative links survive. Parsed with the URL parser, so tricks
+// like "java\tscript:" or control characters cannot hide a scheme; those are refused outright.
 export function safeHref(href) {
   if (typeof href !== 'string') return null;
   const h = href.trim();
-  if (!h) return null;
-  const m = h.match(/^([a-z][a-z0-9+.-]*):/i);
-  if (m && !SAFE_SCHEMES.includes(m[1].toLowerCase())) return null;
+  if (!h || /[\u0000-\u0020\u007f]/.test(h)) return null;
+  let u;
+  try { u = new URL(h, 'https://relative.invalid/'); } catch { return null; }
+  if (!SAFE_SCHEMES.includes(u.protocol)) return null;
   return h;
+}
+// Does loading this URL contact another host? Relative, same-origin, data: and blob: URLs do not.
+export function isRemoteUrl(src, base) {
+  if (typeof src !== 'string') return false;
+  if (/^(data|blob):/i.test(src)) return false;
+  try {
+    const here = base || (typeof location !== 'undefined' ? location.href : 'https://relative.invalid/');
+    const u = new URL(src, here);
+    return u.origin !== new URL(here).origin;
+  } catch {
+    return true;
+  }
 }
 
 // ---------- schema ----------

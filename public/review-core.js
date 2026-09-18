@@ -52,6 +52,7 @@ export function parseReview(text) {
       }
     } catch {}
   }
+  if (text.length > 20000) text = text.slice(0, 20000); // the salvage regexes are lenient; keep them cheap
   const v = text.match(/"verdict"\s*:\s*"(clean|warn|damage)"/);
   if (!v) return null;
   const issues = [];

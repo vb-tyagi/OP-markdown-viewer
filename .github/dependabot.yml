@@ -1,0 +1,13 @@
+# Keeps the pinned dev dependencies (used only to rebuild the editor bundle and run tests) and the
+# SHA-pinned GitHub Actions current. The app itself has no runtime dependencies.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

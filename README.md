@@ -1,5 +1,7 @@
 # OP-markdown-viewer
 
+[![ci](https://github.com/vb-tyagi/OP-markdown-viewer/actions/workflows/ci.yml/badge.svg)](https://github.com/vb-tyagi/OP-markdown-viewer/actions/workflows/ci.yml) [![release](https://img.shields.io/github/v/release/vb-tyagi/OP-markdown-viewer?label=release)](https://github.com/vb-tyagi/OP-markdown-viewer/releases) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Edit markdown files in your browser, in the readable view itself. Open files, write and format like in a document, and save copies wherever you like, with a formatting guard that catches accidental damage on every save. Nothing is uploaded, and nothing asks for permission. Two features are there if you want them, and off until you do: saving straight back into a folder, and an AI reviewer.
 
 **Live:** https://op-markdown-viewer.vercel.app · **Try it:** open the live page and click "try the demo".
@@ -46,12 +48,12 @@ On Windows and Linux, use `Ctrl` for `⌘` and `Alt` for `⌥`.
 
 ## Browser support
 
-| Browser | Files mode (default) | Direct folder saving (opt-in) |
-|---|---|---|
-| Chrome, Edge, Brave, Arc, Opera (Chromium) | Open, edit, save a copy through a save dialog | Yes |
-| Safari, Firefox | Open, edit, download the edited copy | Not available |
+| Browser | Files mode (default) | Direct folder saving (opt-in) | Files loaded from the terminal (`npm start -- --dir`) |
+|---|---|---|---|
+| Chrome, Edge, Brave, Arc, Opera (Chromium) | Open, edit, save a copy through a save dialog | Yes | Yes, saves in place |
+| Safari, Firefox | Open, edit, download the edited copy | Not available | Yes, saves in place |
 
-Direct saving uses the [File System Access API](https://developer.mozilla.org/docs/Web/API/File_System_Access_API). The browser asks once per folder for permission to read and write, shows the grant in the address bar, and forgets it when the tab closes. Only `.md` and `.markdown` files at the top level of the folder are touched.
+Direct saving uses the [File System Access API](https://developer.mozilla.org/docs/Web/API/File_System_Access_API). The browser asks for permission to read and write inside that one folder and shows the grant in the address bar. The page remembers the folder (a handle in the browser's IndexedDB, not a path) so "reopen" can offer it next time; the browser decides whether that needs a new prompt, and recent Chrome versions can remember the grant across visits if you choose so. Only `.md` and `.markdown` files at the top level of the folder are touched. Files loaded from the terminal go through the local companion instead (see "Run it locally"), which is why that path works everywhere.
 
 ## How saves are protected
 
@@ -62,10 +64,10 @@ In every mode:
 
 In files mode, the original file is never written to by the page. The copy goes wherever you point the save dialog, or to your downloads.
 
-In direct mode, additionally:
+In direct mode and for files loaded from the terminal, additionally:
 
 3. Before every save, the previous version is copied to `.op-markdown-viewer-backups/<file>/<timestamp>.md` inside the folder (the newest 30 per file are kept; can be turned off in settings). If the folder is a git repository, add that backup folder to its `.gitignore`.
-4. The write goes through the browser's atomic swap-file mechanism.
+4. The write is atomic: the browser's swap-file mechanism in direct mode, a temporary file plus rename in the companion.
 5. If the file changed on disk since you opened it, the save stops and asks whether to overwrite.
 
 ## The formatting guard
@@ -82,7 +84,7 @@ In direct mode, additionally:
 - editing artifacts: TODO, FIXME, XXX, TBD, `[[`, `{{`, merge markers
 - informational: capitalized sentence starts, paragraph and list count changes
 
-Every rule is relative to the original file, so the guard adapts to each file's own conventions. `npm test` runs it against 22 damage scenarios.
+Every rule is relative to the original file, so the guard adapts to each file's own conventions. `npm test` runs it against every damage scenario in `test-guard.mjs`, alongside the editor fidelity, diff and companion tests.
 
 ## The AI reviewer
 
@@ -105,17 +107,19 @@ npm start
 
 Nothing to install for running it; Node 18 or newer. The server prints the URL it is listening on.
 
-**Ports never clash.** `npm start` picks the first port from 4545 upward that nothing on your machine is listening on, checking both the list of listening sockets and an actual bind. Ask for a port with `PORT=4600 npm start`; if it is busy the next free one is used and the log says so (`STRICT_PORT=1` makes that an error instead). `npm run port` prints a free port on its own, for scripts and other tools.
+**Ports don't clash.** `npm start` picks the first port from 4545 upward that nothing on your machine appears to be listening on: it reads the listening sockets (`lsof`, plus `netstat` or `ss` so other users' sockets count), then confirms the candidate by binding to it on both `127.0.0.1` and `::1`, and retries if the port is taken in the instant between the check and the start. Ask for a port with `PORT=4600 npm start`; if it is busy the next free one is used and the log says so (`STRICT_PORT=1` makes that an error instead). `npm run port` prints a free port on its own, for scripts and other tools.
+
+**The URL carries a key.** The server prints `http://127.0.0.1:<port>/?t=<key>`. Open that exact URL: the page keeps the key for the tab and sends it with every call to the companion, so other programs on the machine cannot use the companion's API. A tab opened without the key still runs the editor, just without the local features.
 
 **Load files from the terminal.** Point the companion at your files and the page opens them straight away, and saves go back to disk through the companion, so in-place saving works in every browser, Safari and Firefox included:
 
 ```bash
 npm start -- --dir ~/essays            # every .md and .markdown in that folder
-npm start -- --files a.md notes/b.md   # specific files
+npm start -- --files a.md notes/b.md   # specific files (relative to where you run npm)
 npm start -- --dir ~/essays --open     # and open the browser
 ```
 
-The companion serves only the files named on its command line, checks that the file has not changed since you opened it before overwriting, writes through a temporary file, verifies the result byte for byte, and keeps the previous version in `.op-markdown-viewer-backups/` next to the file.
+The companion serves only the files named on its command line (symbolic links are refused, so a save can never land somewhere else), checks that the file has not changed since you opened it before overwriting, writes through a temporary file created exclusively next to it, keeps the file's permissions, verifies the result byte for byte, and keeps the previous version in `.op-markdown-viewer-backups/` next to the file. A file name that starts with `--` goes after a bare `--`.
 
 ### From Claude Code: `/vbt-review-markdown`
 
@@ -134,11 +138,11 @@ It is a static site. The `public/` folder is the whole thing.
 - **Vercel** (what the live link uses): import the repository; `vercel.json` sets the output directory and the security headers. Every push to `main` deploys.
 - **GitHub Pages:** enable Pages with source "GitHub Actions", then run the `pages` workflow from the Actions tab (`.github/workflows/pages.yml`, manual trigger). Pages cannot send HTTP headers, so only the in-page security policy applies there.
 
-`.github/workflows/ci.yml` runs the tests and the vendor hash check on every push and pull request.
+`.github/workflows/ci.yml` runs the tests and the vendor hash check on every push and pull request, and rebuilds the editor bundle from the pinned packages to prove the committed file matches. CodeQL scans the code and Dependabot watches the pinned dev dependencies and actions.
 
 ## Privacy and security
 
-No accounts, no analytics, no cookies, no third-party scripts, no remote fonts. A strict Content Security Policy is set both in the page and in the hosting headers. Pasted HTML and passthrough blocks are sanitized with DOMPurify, and links are limited to http, https, mailto and tel. Images referenced by a document are loaded from the web by default so they show up in the editor; that lets the image's host see a request from your browser, and the setting "show images from the web" turns it into click-to-load placeholders instead. Vendored files are pinned by SHA-256 (`npm run verify-vendor`), and CI rebuilds the editor bundle from the pinned packages to prove the committed file matches. See [SECURITY.md](SECURITY.md) for the data flows and the threat model.
+No accounts, no analytics, no cookies, no third-party scripts, no remote fonts. A strict Content Security Policy is set both in the page and in the hosting headers. Pasted HTML and passthrough blocks are sanitized with DOMPurify, links are limited to http, https, mailto, tel and relative addresses (anything else is shown as text, never opened), and images may be relative, http(s) or inline data. Images referenced by a document are loaded from the web by default so they show up in the editor; that lets the image's host see a request from your browser, and the setting "show images from the web" turns them into click-to-load placeholders instead, inside passthrough HTML too. Vendored files are pinned by SHA-256 (`npm run verify-vendor`), and CI rebuilds the editor bundle from the pinned packages to prove the committed file matches. See [SECURITY.md](SECURITY.md) for the data flows and the threat model.
 
 ## Layout
 
@@ -159,6 +163,10 @@ skills/            the /vbt-review-markdown Claude Code skill
 test-*.mjs         guard, editor fidelity, diff and server tests (npm test)
 scripts/           editor bundle build, vendor hash verification, free-port picker
 ```
+
+## Contributing
+
+Issues and pull requests are welcome. Before opening a PR: `npm ci`, `npm test`, and if you touched the editor engine, `npm run build:editor` and commit the rebuilt `public/vendor/editor-bundle.js` (CI checks that it reproduces). Please report security problems privately through GitHub's "Report a vulnerability" rather than as a public issue; see [SECURITY.md](SECURITY.md).
 
 ## License
 

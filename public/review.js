@@ -2,6 +2,7 @@
 //   anthropic : calls api.anthropic.com directly with the user's own key (bring your own key)
 //   cli       : the local companion server (npm start) that runs the `claude` CLI on this machine
 import { REVIEW_SYSTEM_PROMPT, buildReviewInput, parseReview } from './review-core.js';
+import { isLocalhost, localHeaders } from './local.js';
 
 // Prices are USD per million tokens, used only for the on-screen estimate.
 export const MODELS = [
@@ -67,10 +68,9 @@ export async function reviewWithAnthropic({ apiKey, model, name, original, edite
 }
 
 export async function probeCli() {
-  const h = location.hostname;
-  if (h !== 'localhost' && h !== '127.0.0.1') return null; // the companion only ever runs locally
+  if (!isLocalhost()) return null; // the companion only ever runs locally
   try {
-    const r = await fetch('./api/cli-status', { cache: 'no-store', credentials: 'omit' });
+    const r = await fetch('./api/cli-status', { cache: 'no-store', credentials: 'omit', headers: localHeaders() });
     if (!r.ok) return null;
     const j = await r.json();
     return j && j.ok ? j : null;
@@ -83,7 +83,7 @@ export async function reviewWithCli({ name, original, edited, styleNotes, signal
   const r = await fetch('./api/cli-review', {
     method: 'POST',
     credentials: 'omit',
-    headers: { 'content-type': 'application/json' },
+    headers: localHeaders({ 'content-type': 'application/json' }),
     body: JSON.stringify({ name, original, edited, styleNotes }),
     signal,
   });

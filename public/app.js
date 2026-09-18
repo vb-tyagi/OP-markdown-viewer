@@ -4,6 +4,8 @@ import * as FS from './fs.js';
 import { MODELS, DEFAULT_MODEL, looksLikeKey, reviewWithAnthropic, probeCli, reviewWithCli } from './review.js';
 import { createEditor } from './mdeditor.js';
 import { diffLines, hunks } from './diff.js';
+import { captureLocalKey, isLocalhost, localKey } from './local.js';
+import { safeHref } from './mdcore.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -99,12 +101,15 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
     node.setAttribute('rel', 'noopener noreferrer');
   }
 });
-// id/name/class are forbidden so a hostile file cannot clobber lookups or impersonate the app's own UI.
+// id/name/class are forbidden so a hostile file cannot clobber lookups or impersonate the app's own UI;
+// label/for, area/map, download, popovertarget and friends are forbidden so document content cannot
+// drive the app's own controls or start downloads; media elements are dropped rather than blocked.
 const PURIFY_CFG = {
   USE_PROFILES: { html: true },
-  FORBID_TAGS: ['style', 'form', 'input', 'button', 'textarea', 'select', 'iframe', 'object', 'embed', 'svg', 'math', 'link', 'meta', 'base', 'template'],
-  FORBID_ATTR: ['style', 'id', 'name', 'class'],
+  FORBID_TAGS: ['style', 'form', 'input', 'button', 'textarea', 'select', 'iframe', 'object', 'embed', 'svg', 'math', 'link', 'meta', 'base', 'template', 'label', 'map', 'area', 'video', 'audio', 'source', 'picture', 'track', 'dialog', 'slot'],
+  FORBID_ATTR: ['style', 'id', 'name', 'class', 'for', 'download', 'usemap', 'popovertarget', 'popover', 'tabindex', 'accesskey', 'autofocus', 'srcset', 'sizes', 'ping'],
   ALLOW_DATA_ATTR: false,
+  ADD_ATTR: ['data-pm-slice'], // ProseMirror's own paste metadata (a pair of numbers), so internal copy/paste keeps its structure
 };
 const sanitize = (html) => DOMPurify.sanitize(html, PURIFY_CFG);
 const inPanel = (id) => els.panel.querySelector('#' + id);
@@ -148,8 +153,9 @@ function openPopover(mode, { existing = null, selectedText = '', coords } = {}) 
   els.popLinkError.hidden = true;
   els.popImgError.hidden = true;
   if (mode === 'view') {
-    els.popHref.textContent = existing.href;
-    els.popHref.href = existing.href;
+    const safe = safeHref(existing.href);
+    els.popHref.textContent = safe ? existing.href : `${existing.href} (blocked link type)`;
+    if (safe) els.popHref.href = safe; else els.popHref.removeAttribute('href');
   } else if (mode === 'link') {
     els.popUrl.value = existing ? existing.href : '';
     els.popTextLabel.hidden = !!existing || !!selectedText;
@@ -383,7 +389,7 @@ async function open(name) {
   try { r = await folder.read(name); } catch (e) { alert('could not read the file: ' + e.message); return; }
   cur = { name, text: r.text, bom: r.bom, eol: r.eol, mixed: r.mixed, valid: r.valid, lastModified: r.lastModified };
   editor.setMarkdown(r.text, { fresh: true });
-  editor.setLocked(lockedByUser || !r.valid);
+  applyLock();
   refreshFmCard();
   els.srcText.value = r.text;
   els.docArea.scrollTop = 0;
@@ -801,7 +807,13 @@ for (const b of els.fmtToolbar.querySelectorAll('button[data-cmd]')) {
   b.onclick = () => { if (cur) editor.run(b.dataset.cmd); };
 }
 els.blockType.onchange = () => { const v = els.blockType.value; if (cur && ['p', 'h1', 'h2', 'h3'].includes(v)) editor.run(v === 'p' ? 'paragraph' : v); };
-els.lockEdit.onclick = () => { lockedByUser = !lockedByUser; editor.setLocked(lockedByUser || (cur && !cur.valid)); toast(lockedByUser ? 'reading mode: editing is off' : 'editing is on'); };
+function applyLock() {
+  const locked = lockedByUser || !!(cur && !cur.valid);
+  editor.setLocked(locked);
+  els.srcText.readOnly = locked;
+  els.fmEdit.readOnly = locked;
+}
+els.lockEdit.onclick = () => { lockedByUser = !lockedByUser; applyLock(); toast(lockedByUser ? 'reading mode: editing is off' : 'editing is on'); };
 
 $('save').onclick = saveFlow;
 $('check').onclick = runCheck;
@@ -841,9 +853,16 @@ window.addEventListener('beforeunload', (e) => { if (isDirty()) { e.preventDefau
 // ---------- boot ----------
 (async () => {
   applyAiVisibility();
-  sessionInfo = await FS.probeSession();
+  captureLocalKey();
+  const probe = await FS.probeSession();
+  if (probe && probe.unauthorized) {
+    showBanner('the local companion is running, but this tab has no key for it. open the exact URL that npm start printed (it ends with ?t=…) to use your files and the local reviewer.');
+    sessionInfo = null;
+  } else {
+    sessionInfo = probe;
+  }
   await showWelcome();
-  cliInfo = await probeCli();
+  cliInfo = localKey() || !isLocalhost() ? await probeCli() : null;
   setStatus('ready');
   // Files handed over by the terminal (or the /vbt-review-markdown skill) open straight away.
   if (sessionInfo && !folder) await tryOpen(async () => FS.openSession(sessionInfo), 'opening your files…');

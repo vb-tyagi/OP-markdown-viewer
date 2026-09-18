@@ -7,7 +7,7 @@ import {
   inputRules, wrappingInputRule, textblockTypeInputRule, undoInputRule,
   wrapInList, splitListItem, liftListItem, sinkListItem,
 } from './vendor/editor-bundle.js';
-import { schema, md, parseMarkdown, serializeBody, safeHref, findMatches } from './mdcore.js';
+import { schema, md, parseMarkdown, serializeBody, safeHref, isRemoteUrl, findMatches } from './mdcore.js';
 
 const N = schema.nodes;
 const M = schema.marks;
@@ -150,7 +150,7 @@ class ImageView {
   constructor(node, loadRemote) {
     this.dom = document.createElement('span');
     this.dom.className = 'img-wrap';
-    const remote = /^https?:/i.test(node.attrs.src);
+    const remote = isRemoteUrl(node.attrs.src);
     const load = () => {
       const img = document.createElement('img');
       img.src = node.attrs.src;
@@ -181,7 +181,7 @@ class ImageView {
   stopEvent(e) { return e.type === 'click' && e.target.classList.contains('img-load'); }
 }
 class OpaqueView {
-  constructor(node, sanitize) {
+  constructor(node, sanitize, loadRemote) {
     this.dom = document.createElement('div');
     this.dom.className = 'opaque';
     this.dom.contentEditable = 'false';
@@ -192,10 +192,25 @@ class OpaqueView {
     body.className = 'opaque-body';
     const html = node.attrs.kind === 'table' ? md.render(node.attrs.raw) : node.attrs.raw;
     body.innerHTML = sanitize ? sanitize(html) : '';
+    // Images inside passthrough HTML obey the same "show images from the web" setting as the rest.
+    for (const img of [...body.querySelectorAll('img')]) {
+      const src = img.getAttribute('src') || '';
+      if (!safeHref(src) && !/^data:image\//i.test(src)) { img.remove(); continue; }
+      if (isRemoteUrl(src) && loadRemote && !loadRemote()) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'img-missing img-load';
+        let host = src;
+        try { host = new URL(src, location.href).host; } catch {}
+        btn.textContent = `image: ${img.getAttribute('alt') || '(no alt)'} · ${host} · click to load`;
+        btn.addEventListener('click', (e) => { e.preventDefault(); btn.replaceWith(img); });
+        img.replaceWith(btn);
+      }
+    }
     this.dom.append(label, body);
   }
   ignoreMutation() { return true; }
-  stopEvent() { return false; }
+  stopEvent(e) { return e.type === 'click' && !!(e.target.classList && e.target.classList.contains('img-load')); }
 }
 
 // ---------- editor ----------
@@ -239,7 +254,7 @@ export function createEditor({ mount, sanitize, onChange, onUpdate, onLinkReques
   // Fresh closures each time, so passing them again forces ProseMirror to redraw every node view.
   const nodeViews = () => ({
     image: (node) => new ImageView(node, loadRemoteImages),
-    opaque: (node) => new OpaqueView(node, sanitize),
+    opaque: (node) => new OpaqueView(node, sanitize, loadRemoteImages),
   });
   const view = new EditorView(mount, {
     state: EditorState.create({ schema, plugins: plugins() }),
